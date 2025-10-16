@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import time
 import openai
@@ -525,7 +526,7 @@ async def send_final_report(update: Update, user: Dict[str, Any]):
     # Объединяем отчёт с дополнительной информацией
     promo = "\n\n🚀 ПОЛЕЗНЫЙ КОНТЕНТ ПО ПРОДЖАМ И ИИ:\nвы сможете найти на канале [Тактика Кутузова](https://t.me/TaktikaKutuzova)"
     full_report = f"{report}{case_info}{stats_info}{listening_section}{rank_info}{level_up_msg}{achievements_info}{promo}\n\n🎯 Для новой тренировки напишите \"начать\" или используйте /help для справки"
-    await update.message.reply_text(full_report)
+    await update.message.reply_text(full_report, parse_mode=ParseMode.MARKDOWN)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстовых сообщений"""
