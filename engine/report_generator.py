@@ -70,10 +70,10 @@ class ReportGenerator:
         lines.append("💡 РЕКОМЕНДАЦИИ:")
         lines.append("\n".join(recs))
         lines.append("")
+        lines.append("🎯 Для новой тренировки напишите \"начать\"")
+        lines.append("")
         lines.append("🚀 ПОЛЕЗНЫЙ КОНТЕНТ ПО ПРОДЖАМ И ИИ:")
         lines.append("вы сможете найти на канале Тактика Кутузова @TaktikaKutuzova")
-        lines.append("")
-        lines.append("🎯 Для новой тренировки напишите \"начать\"")
 
         return "\n".join(lines)
 
