@@ -178,8 +178,17 @@ def _check_achievements(user_id: int):
     """Проверка и разблокировка достижений"""
     u = get_user_data(user_id)
     st = u['stats']
+    session = u['session']
     cfg = _ensure_scenario_loaded()
     achievements = cfg.get('achievements', {}).get('list', [])
+    
+    # Создаем контекст для eval с данными из сессии и статистики
+    eval_context = st.copy()
+    eval_context.update({
+        'question_count': session.get('question_count', 0),
+        'contextual_questions': session.get('contextual_questions', 0),
+        'last_contextual_questions': session.get('contextual_questions', 0),
+    })
     
     newly_unlocked = []
     for ach in achievements:
@@ -187,12 +196,27 @@ def _check_achievements(user_id: int):
             continue
         condition = ach.get('condition', '')
         try:
-            if eval(condition, {"__builtins__": {}}, st):
+            if eval(condition, {"__builtins__": {}}, eval_context):
                 st['achievements_unlocked'].append(ach['id'])
                 newly_unlocked.append(ach)
                 logger.info(f"🎖️ Достижение разблокировано: {ach.get('name')}")
         except Exception as e:
             logger.error(f"Ошибка проверки достижения {ach.get('id')}: {e}")
+    return newly_unlocked
+
+def _get_newly_unlocked_achievements(user: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Получение новых достижений для отчёта"""
+    user_id = user.get('user_id')  # Нужно передавать user_id в user
+    if not user_id:
+        return []
+    
+    # Проверяем и разблокируем достижения
+    newly_unlocked = _check_achievements(user_id)
+    
+    # Сбрасываем флаг показа уведомления о повышении уровня
+    if user['stats'].get('level_up_notification', {}).get('should_show'):
+        user['stats']['level_up_notification']['should_show'] = False
+    
     return newly_unlocked
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -437,103 +461,37 @@ async def send_final_report(update: Update, user: Dict[str, Any]):
     """Отправка финального отчета (универсально)."""
     cfg = _ensure_scenario_loaded()
     session = user['session']
-    case_data = session.get('case_data')
-
-    # Подсчет очков через анализатор, используя конфиг
-    temp_user = {
-        'question_count': session['question_count'],
-        'clarity_level': session['clarity_level'],
-        'per_type_counts': session['per_type_counts'],
+    
+    # Подсчет очков через анализатор
+    total_score = QuestionAnalyzer().calculate_score(session, cfg['question_types'])
+    
+    # Собираем ВСЕ данные для генератора отчёта
+    user_with_id = user.copy()
+    user_with_id['user_id'] = update.effective_user.id
+    
+    report_data = {
+        'session': session,
+        'stats': user['stats'],
+        'case_data': session.get('case_data'),
+        'total_score': total_score,
+        'achievements': _get_newly_unlocked_achievements(user_with_id),
+        'level_up': user['stats'].get('level_up_notification'),
     }
-    temp_user['total_score'] = QuestionAnalyzer().calculate_score(session, cfg['question_types'])
-
-    # Генерируем базовый отчёт
-    report = ReportGenerator().generate_final_report(temp_user, cfg)
-
-    # Добавляем информацию о кейсе
-    case_info = ""
-    if case_data:
-        case_info = f"""
-📋 ИНФОРМАЦИЯ О КЕЙСЕ:
-Должность: {case_data['position']}
-Компания: {case_data['company']['type']}
-Продукт: {case_data['product']['name']}
-Объём: {case_data['volume']}
-"""
-
-    # Общая статистика пользователя
-    stats = user['stats']
-    stats_info = f"""
-📈 ВАША ОБЩАЯ СТАТИСТИКА:
-Пройдено тренировок: {stats['total_trainings']}
-Всего вопросов задано: {stats['total_questions']}
-Лучший результат: {stats['best_score']} баллов
-"""
-
-    # НОВОЕ: Ранг и достижения
-    levels = cfg.get('ranking', {}).get('levels', [])
-    stats = user['stats']
-    current_level_data = next((l for l in levels if l.get('level') == stats.get('current_level', 1)), (levels[0] if levels else {'level': 1, 'name': 'Новичок', 'emoji': '🌱', 'min_xp': 0, 'description': ''}))
-    next_level_data = next((l for l in levels if l.get('level') == stats.get('current_level', 1) + 1), None)
-    xp_progress = ""
-    if next_level_data:
-        current_xp = int(stats.get('total_xp', 0))
-        xp_to_next = int(next_level_data.get('min_xp', 0)) - current_xp
-        if xp_to_next > 0:
-            xp_progress = f"\nДо следующего уровня: {xp_to_next} XP"
-    rank_info = f"""
-⭐ ВАШ РАНГ:
-{current_level_data.get('emoji', '')} Уровень {current_level_data.get('level', 1)}: {current_level_data.get('name', '')}
-Опыт (XP): {stats.get('total_xp', 0)}{xp_progress}
-{current_level_data.get('description', '')}
-
-💡 Используйте /rank для детального просмотра прогресса и достижений
-"""
-
-    # Проверка повышения уровня
-    level_up_msg = ""
-    if stats.get('level_up_notification', {}).get('should_show'):
-        notif = stats['level_up_notification']
-        level_data = next((l for l in levels if l.get('level') == notif['new_level']), None)
-        level_emoji = level_data.get('emoji', '🎉') if level_data else '🎉'
-        level_name = level_data.get('name', '') if level_data else ''
-        level_up_msg = f"\n\n🎊 ПОЗДРАВЛЯЕМ! ВЫ ПОВЫСИЛИ УРОВЕНЬ!\n{level_emoji} Уровень {notif['old_level']} → Уровень {notif['new_level']}: {level_name}\n\nИспользуйте /rank для подробностей\n"
-        stats['level_up_notification']['should_show'] = False
-
-    newly_unlocked = _check_achievements(update.effective_user.id)
-    achievements_info = ""
-    if newly_unlocked:
-        achievements_info = "\n\n🎖️ НОВЫЕ ДОСТИЖЕНИЯ:\n" + "\n".join(
-            f"{ach.get('emoji', '')} {ach.get('name', '')} - {ach.get('description', '')}"
-            for ach in newly_unlocked
-        )
-
-    # Активное слушание — статистика
-    contextual_q = int(user['session'].get('contextual_questions', 0))
-    qcount = int(user['session'].get('question_count', 0))
-    contextual_pct = int((contextual_q / qcount) * 100) if qcount > 0 else 0
-    listening_section = f"""
-👂 АКТИВНОЕ СЛУШАНИЕ:
-Контекстуальных вопросов: {contextual_q}/{qcount} ({contextual_pct}%)
-"""
-    if contextual_pct >= 70:
-        listening_section += "🏆 Отлично! Вы внимательно слушаете клиента!\n"
-    elif contextual_pct >= 40:
-        listening_section += "💡 Хорошо, но можно чаще использовать факты из ответов\n"
-    else:
-        listening_section += "⚠️ Совет: стройте вопросы на основе ответов клиента\n"
-
-    # Объединяем отчёт с дополнительной информацией
-    full_report = f"{report}{case_info}{stats_info}{listening_section}{rank_info}{level_up_msg}{achievements_info}\n\n🎯 Для новой тренировки напишите \"начать\" или используйте /help для справки\n\n🚀 ПОЛЕЗНЫЙ КОНТЕНТ ПО ПРОДЖАМ И ИИ:\nвы сможете найти на канале Тактика Кутузова @TaktikaKutuzova"
+    
+    # Генератор делает ВСЮ работу по форматированию
+    report = ReportGenerator().generate_final_report(report_data, cfg)
+    
     # Диагностика наличия промо-блока в финальном отчёте
     try:
-        if 'Тактика Кутузова' in full_report or 'TaktikaKutuzova' in full_report:
+        if 'Тактика Кутузова' in report or 'TaktikaKutuzova' in report:
             logger.info("Final report: promo block PRESENT")
         else:
             logger.warning("Final report: promo block MISSING")
     except Exception:
         pass
-    await update.message.reply_text(full_report, parse_mode=ParseMode.MARKDOWN)
+    
+    # Просто отправляем
+    await update.message.reply_text(report, parse_mode=ParseMode.MARKDOWN)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстовых сообщений"""
