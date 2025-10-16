@@ -525,6 +525,14 @@ async def send_final_report(update: Update, user: Dict[str, Any]):
 
     # Объединяем отчёт с дополнительной информацией
     full_report = f"{report}{case_info}{stats_info}{listening_section}{rank_info}{level_up_msg}{achievements_info}\n\n🎯 Для новой тренировки напишите \"начать\" или используйте /help для справки"
+    # Диагностика наличия промо-блока в финальном отчёте
+    try:
+        if 'Тактика Кутузова' in full_report or 'TaktikaKutuzova' in full_report:
+            logger.info("Final report: promo block PRESENT")
+        else:
+            logger.warning("Final report: promo block MISSING")
+    except Exception:
+        pass
     await update.message.reply_text(full_report, parse_mode=ParseMode.MARKDOWN)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
