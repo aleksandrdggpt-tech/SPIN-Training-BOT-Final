@@ -524,7 +524,8 @@ async def send_final_report(update: Update, user: Dict[str, Any]):
         listening_section += "⚠️ Совет: стройте вопросы на основе ответов клиента\n"
 
     # Объединяем отчёт с дополнительной информацией
-    full_report = f"{report}{case_info}{stats_info}{listening_section}{rank_info}{level_up_msg}{achievements_info}\n\n🎯 Для новой тренировки напишите \"начать\" или используйте /help для справки"
+    promo = "\n\n🚀 ПОЛЕЗНЫЙ КОНТЕНТ ПО ПРОДЖАМ И ИИ:\nвы сможете найти на канале [Тактика Кутузова](https://t.me/TaktikaKutuzova)"
+    full_report = f"{report}{case_info}{stats_info}{listening_section}{rank_info}{level_up_msg}{achievements_info}{promo}\n\n🎯 Для новой тренировки напишите \"начать\" или используйте /help для справки"
     await update.message.reply_text(full_report)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
