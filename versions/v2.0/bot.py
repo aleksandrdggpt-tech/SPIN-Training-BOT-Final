@@ -265,27 +265,42 @@ async def call_llm(kind: str, system_prompt: str, user_message: str) -> str:
                 limits=httpx.Limits(max_connections=1, max_keepalive_connections=1)
             )
         )
-        # Для части моделей (напр. gpt-5-*) параметр max_tokens не поддерживается
-        openai_payload = {
+        temperature = 0.0 if kind == 'classification' else 0.7
+        # Для gpt-5* используем Responses API
+        if str(model_name).startswith("gpt-5"):
+            payload = {
+                "model": model_name,
+                "input": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                "temperature": temperature,
+                "max_output_tokens": 20 if kind == 'classification' else 400,
+            }
+            logger.info(f"OpenAI Responses payload: keys={list(payload.keys())}")
+            try:
+                resp = await client.responses.create(**payload)
+                return (resp.output_text or "").strip()
+            except Exception as e:
+                logger.error(f"OpenAI Responses request failed model={model_name} error={e}")
+                raise
+        # Для 4o и др. — Chat Completions
+        payload = {
             "model": model_name,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            "temperature": 0.0 if kind == 'classification' else 0.7,
+            "temperature": temperature,
+            "max_tokens": 20 if kind == 'classification' else 400,
         }
-        if str(model_name).startswith("gpt-5"):
-            openai_payload["max_completion_tokens"] = 20 if kind == 'classification' else 400
-            logger.info(f"OpenAI payload (gpt-5*): keys={list(openai_payload.keys())}")
-        else:
-            openai_payload["max_tokens"] = 20 if kind == 'classification' else 400
-            logger.info(f"OpenAI payload: keys={list(openai_payload.keys())}")
+        logger.info(f"OpenAI Chat payload: keys={list(payload.keys())}")
         try:
-            resp = await client.chat.completions.create(**openai_payload)
+            resp = await client.chat.completions.create(**payload)
+            return resp.choices[0].message.content.strip()
         except Exception as e:
-            logger.error(f"OpenAI request failed model={model_name} keys={list(openai_payload.keys())} error={e}")
+            logger.error(f"OpenAI Chat request failed model={model_name} error={e}")
             raise
-        return resp.choices[0].message.content.strip()
 
     async def _invoke_anthropic(model_name: str) -> str:
         if not ANTHROPIC_API_KEY:
