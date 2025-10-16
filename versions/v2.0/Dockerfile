@@ -15,6 +15,9 @@ COPY requirements.txt .
 # Устанавливаем Python зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Для обхода кэширования
+ARG CACHEBUST=1
+
 # Копируем код приложения
 COPY . .
 
