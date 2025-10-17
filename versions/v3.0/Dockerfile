@@ -1,6 +1,9 @@
 # Используем официальный Python образ
 FROM python:3.11-slim
 
+# Нестрочный вывод логов в stdout/stderr
+ENV PYTHONUNBUFFERED=1
+
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
