@@ -1,6 +1,6 @@
-# SPIN TRAINING BOT v.2.0 — Конструктор обучающих ботов
+# SPIN TRAINING BOT v.3.0 — Конструктор обучающих ботов
 
-Универсальный Telegram-бот для обучающих сценариев. Вся логика вынесена в конфигурации сценариев, что позволяет создавать новые обучающие боты без изменения кода.
+Универсальный Telegram-бот для обучающих сценариев. Логика вынесена в конфигурации сценариев — создавайте новые обучающие боты без правок кода.
 
 ## Архитектура
 
@@ -9,58 +9,51 @@ engine/
   scenario_loader.py     # загрузка и валидация конфигов
   question_analyzer.py   # определение типа вопроса и очков ясности
   report_generator.py    # финальный отчёт, бейджи, рекомендации
+services/
+  llm_service.py         # OpenAI/Anthropic + fallback, HTTP/2, pooling
+  training_service.py    # сессия тренировки, фидбек, TTL‑кэш
+  user_service.py        # данные пользователя и статистика
+infrastructure/
+  health_server.py       # health‑check HTTP
 scenarios/
-  spin_sales/            # продакшн сценарий SPIN
-  template/              # шаблон для копирования
-  example_scenario/      # пример другого домена (переговоры)
-bot.py                   # универсальный движок, без SPIN-хардкода
+  spin_sales/            # продакшн‑сценарий SPIN
+  template/              # шаблон
+bot.py                   # хендлеры Telegram и координация
 ```
+
+## Что нового в v3.0 (кратко)
+- Единые клиенты: httpx AsyncClient (HTTP/2, pooling) + AsyncOpenAI
+- Антидублирование «ДА», TTL‑кэш фидбека, прогрев моделей при старте
+- Стриминг фидбека для GPT‑4‑серии и Anthropic (GPT‑5 — обычная генерация)
+- Новые команды: `/caseinfo`, `/author`; `/validate` — только для админов
+- .env упрощена — только секреты; остальное сконфигурировано в коде
 
 ## Быстрый старт
 
-1) Установить зависимости:
+1) Установить зависимости (рекомендуется в venv):
 ```bash
-pip install -r requirements.txt
+pip install -r REQUIREMENTS.txt
 ```
 
-2) Настроить `.env`:
+2) Создать и заполнить `.env` (только секреты и админы):
 ```
-BOT_TOKEN=...            # токен Telegram-бота
-OPENAI_API_KEY=...       # ключ OpenAI
-SCENARIO_PATH=scenarios/spin_sales/config.json  # путь к сценарию
-
+BOT_TOKEN=...                # токен Telegram‑бота
+OPENAI_API_KEY=...           # ключ OpenAI
 # (опционально) Anthropic для fallback
 ANTHROPIC_API_KEY=...
-
-# Таймаут/ретраи LLM
-LLM_TIMEOUT_SEC=30
-LLM_MAX_RETRIES=1
-
-# Конвейер ответов клиента
-RESPONSE_PRIMARY_PROVIDER=openai
-RESPONSE_PRIMARY_MODEL=gpt-4o-mini
-RESPONSE_FALLBACK_PROVIDER=anthropic
-RESPONSE_FALLBACK_MODEL=claude-3-haiku-latest
-
-# Конвейер фидбека наставника
-FEEDBACK_PRIMARY_PROVIDER=openai
-FEEDBACK_PRIMARY_MODEL=gpt-5-mini
-FEEDBACK_FALLBACK_PROVIDER=anthropic
-FEEDBACK_FALLBACK_MODEL=claude-3-5-sonnet-latest
-
-# Конвейер классификации вопросов (SPIN)
-CLASSIFICATION_PRIMARY_PROVIDER=openai
-CLASSIFICATION_PRIMARY_MODEL=gpt-4o-mini
-CLASSIFICATION_FALLBACK_PROVIDER=openai
-CLASSIFICATION_FALLBACK_MODEL=gpt-3.5-turbo
+# (опционально) список Telegram‑ID админов для /validate
+ADMIN_USER_IDS=123456789,987654321
 ```
 
 3) Запуск:
 ```bash
-python bot.py
+python3 bot.py
 ```
 
-Команды в чате: `/start`, `/help`, `/scenario`, `/stats`, `/rank`, `/case`, `/validate`, а также текстовые: "начать", "завершить", "ДА".
+Команды в чате:
+- `/start`, `/help`, `/stats`, `/rank`, `/caseinfo`, `/author`
+- текстовые: «начать», «завершить», «ДА»
+- `/validate` — доступна только админам (если указан `ADMIN_USER_IDS`)
 
 ## Создание нового сценария
 
@@ -75,10 +68,7 @@ python bot.py
 - `scoring`: бейджи по шкале очков
 - `ui`: формат прогресса, набор команд
 
-3) Укажите путь к новому сценарию в `.env`:
-```
-SCENARIO_PATH=scenarios/my_course/config.json
-```
+3) Укажите путь к новому сценарию в коде/конфиге при необходимости (по умолчанию используется `scenarios/spin_sales/config.json`).
 
 4) Перезапустите бота.
 
@@ -97,10 +87,11 @@ SCENARIO_PATH=scenarios/my_course/config.json
 ```
 
 ## Совместимость и обработка ошибок
-- Вся прежняя логика SPIN перенесена в `scenarios/spin_sales/config.json`.
-- При ошибках загрузки сценария бот пишет понятные сообщения и логирует детали.
+- Вся предметная логика вынесена в `scenarios/.../config.json`.
+- Health‑check доступен на локальном порту (см. вывод запуска).
+- При ошибках загрузки сценария бот отвечает понятным сообщением и логирует детали.
 
 ## Примечания
 - Для смены домена обучения правьте только конфиг сценария — код бота менять не нужно.
-- Добавьте мультиязычность, JSON Schema-валидацию и CLI-генератор сценариев при необходимости.
+- Рекомендуется хранить `venv/`, `__pycache__/`, `logs/`, `.env` вне репозитория (см. `.gitignore`).
 
