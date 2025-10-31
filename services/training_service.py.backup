@@ -28,8 +28,7 @@ class TrainingService:
         question_analyzer: QuestionAnalyzer,
         report_generator: ReportGenerator,
         case_generator: CaseGenerator,
-        scenario_loader: ScenarioLoader,
-        active_listening_detector=None
+        scenario_loader: ScenarioLoader
     ):
         """Инициализация сервиса с зависимостями."""
         self.user_service = user_service
@@ -39,7 +38,6 @@ class TrainingService:
         self.report_generator = report_generator
         self.case_generator = case_generator
         self.scenario_loader = scenario_loader
-        self.active_listening_detector = active_listening_detector
     
     async def start_training(self, user_id: int, scenario_config: Dict[str, Any]) -> str:
         """Генерация нового кейса и начало тренировки."""
@@ -146,24 +144,23 @@ class TrainingService:
             )
             client_response = await self.llm_service.call_llm('response', enriched_prompt, "Ответь на вопрос как клиент")
             
-            # Проверяем контекстуальность вопроса (активное слушание)
+            # Проверяем контекстуальность вопроса
             is_contextual = False
             last_resp = session.get('last_client_response', '')
-
-            if self.active_listening_detector and last_resp:
-                is_contextual = await self.active_listening_detector.check_context_usage(
-                    question=question,
-                    last_response=last_resp,
-                    call_llm_func=self.llm_service.call_llm
+            if last_resp:
+                is_contextual = await self.question_analyzer.check_context_usage(
+                    question,
+                    last_resp,
+                    lambda kind, sys, usr: self.llm_service.call_llm('context', sys, usr),
+                    scenario_config.get('prompts', {})
                 )
-
+            
             context_badge = ""
             if is_contextual:
                 session['contextual_questions'] = int(session.get('contextual_questions', 0)) + 1
-                bonus_points = self.active_listening_detector.get_bonus_points()
-                session['clarity_level'] = min(100, session['clarity_level'] + bonus_points)
-                context_badge = self.active_listening_detector.format_badge()
-                # Вернет: " 👂 (Успешное активное слушание)"
+                contextual_bonus = int(scenario_config.get('scoring', {}).get('question_weights', {}).get('contextual_bonus', 0))
+                session['clarity_level'] = min(100, session['clarity_level'] + contextual_bonus)
+                context_badge = " 👂"
             
             # Сохраняем последний ответ клиента
             session['last_client_response'] = client_response

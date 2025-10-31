@@ -25,3 +25,7 @@ logs/
 bot.pid
 # Local data
 users_data.json
+
+# Keep examples
+!.env.example
+!env.v4.example

@@ -67,50 +67,8 @@ class QuestionAnalyzer:
                 logger.warning(f"LLM classification failed ({type(e).__name__}): {e}; using fallback")
         return self.classify_question_fallback(question, question_types)
 
-    async def check_context_usage(
-        self,
-        question: str,
-        last_response: str,
-        call_llm_func: Callable[[str, str, str], Awaitable[str]] = None,
-        prompts: Dict[str, Any] = None
-    ) -> bool:
-        """Определяет, использует ли вопрос факты из последнего ответа клиента."""
-        if not last_response:
-            return False
-        # Попытка через LLM
-        if call_llm_func and prompts and prompts.get('context_check'):
-            try:
-                prompt = str(prompts.get('context_check', '')).format(
-                    last_response=last_response,
-                    question=question
-                )
-                raw = await call_llm_func('context', prompt, 'Check context usage')
-                label = (raw or '').strip().lower()
-                if 'yes' in label and not 'no' in label:
-                    logger.info("LLM context check: yes")
-                    return True
-                if 'no' in label:
-                    logger.info("LLM context check: no")
-                    return False
-                raise ValueError(f"Unrecognized context label: {raw}")
-            except Exception as e:
-                logger.warning(f"LLM context check failed ({type(e).__name__}): {e}; fallback heuristic")
-        # Fallback эвристика
-        return self.check_context_usage_fallback(question, last_response)
-
-    def check_context_usage_fallback(self, question: str, last_response: str) -> bool:
-        q = question.lower()
-        resp = last_response.lower()
-        # Числа из ответа
-        import re
-        numbers = re.findall(r"\b\d+[\d\s.,]*\b", resp)
-        if any(n.strip() and n.strip() in q for n in numbers):
-            return True
-        # Ключевые маркеры ссылок на сказанное
-        markers = ["как вы сказали", "уточните", "по поводу", "вы упомянули", "этих", "этой проблемы", "этой ситуации"]
-        if any(m in q for m in markers):
-            return True
-        return False
+    # NOTE: check_context_usage() moved to modules/active_listening/detector.py
+    # Use ActiveListeningDetector instead
 
     def calculate_clarity_increase(self, question_type: Dict[str, Any]) -> int:
         """Return clarity points from the question type definition."""

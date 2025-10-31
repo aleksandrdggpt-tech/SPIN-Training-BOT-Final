@@ -1,0 +1,138 @@
+SPIN Training BOT v4.0 — Project Structure
+═══════════════════════════════════════════════════════════════
+
+ROOT/
+│
+├── 📁 modules/                          [PAYMENT MODULE - PORTABLE]
+│   ├── __init__.py
+│   └── 📁 payments/
+│       ├── __init__.py                  # Module exports
+│       ├── config.py                    # Tariffs & settings
+│       ├── messages.py                  # Sales funnel texts
+│       ├── keyboards.py                 # Telegram keyboards
+│       ├── states.py                    # FSM states
+│       ├── subscription.py              # Subscription logic + decorator
+│       ├── promocodes.py                # Promocode system
+│       ├── handlers.py                  # Telegram handlers
+│       └── 📁 providers/
+│           ├── __init__.py
+│           ├── base.py                  # PaymentProvider base class
+│           ├── yookassa.py              # YooKassa provider
+│           ├── cloudpayments.py         # CloudPayments provider
+│           └── prodamus.py              # Prodamus provider
+│
+├── 📁 database/                         [DATABASE MODULE]
+│   ├── __init__.py
+│   ├── models.py                        # SQLAlchemy models (6 models)
+│   │   ├── User
+│   │   ├── Subscription
+│   │   ├── Payment
+│   │   ├── Promocode
+│   │   ├── PromocodeUsage
+│   │   └── FreeTraining
+│   └── database.py                      # Async connection & sessions
+│
+├── 📁 services/                         [EXISTING v3 SERVICES]
+│   ├── user_service.py                  # User data (in-memory)
+│   ├── llm_service.py                   # OpenAI/Anthropic
+│   ├── training_service.py              # Training coordination
+│   └── achievement_service.py           # Achievements
+│
+├── 📁 engine/                           [EXISTING v3 ENGINE]
+│   ├── scenario_loader.py               # Scenario loading
+│   ├── question_analyzer.py             # Question classification
+│   ├── report_generator.py              # Report generation
+│   └── case_generator.py                # Case generation
+│
+├── 📁 infrastructure/                   [EXISTING v3 INFRASTRUCTURE]
+│   └── health_server.py                 # Health check HTTP server
+│
+├── 📁 scenarios/                        [EXISTING v3 SCENARIOS]
+│   ├── spin_sales/
+│   │   └── config.json
+│   ├── example_scenario/
+│   └── template/
+│
+├── 📄 bot.py                            [MAIN BOT FILE - v3]
+├── 📄 config.py                         [APP CONFIGURATION - v3]
+│
+├── 📄 REQUIREMENTS_v4.txt               [V4 DEPENDENCIES]
+├── 📄 .env.v4.example                   [V4 ENV TEMPLATE]
+│
+├── 📖 README_v4.md                      [V4 FULL DOCUMENTATION]
+├── 📖 V4_INTEGRATION_GUIDE.md           [V4 INTEGRATION GUIDE]
+├── 📖 V4_SUMMARY.md                     [V4 SUMMARY]
+└── 📖 PROJECT_STRUCTURE_v4.txt          [THIS FILE]
+
+═══════════════════════════════════════════════════════════════
+
+🔑 KEY COMPONENTS:
+
+modules/payments/
+  → Fully portable payment module
+  → Can be copied to any Telegram bot
+  → No dependencies on SPIN Bot specific code
+
+database/
+  → SQLAlchemy 2.0 with async support
+  → 6 models: User, Subscription, Payment, Promocode, etc.
+  → SQLite by default, PostgreSQL for production
+
+Payment Providers:
+  → base.py: Abstract base class
+  → 3 providers: YooKassa, CloudPayments, Prodamus
+  → Stub implementations (API calls to be implemented)
+
+Subscription Logic:
+  → @subscription_required decorator
+  → Supports time-based (month/year) and credits-based
+  → Automatic access checking
+  → Integration with free trainings & promocodes
+
+Promocode System:
+  → 3 types: trainings, free_month, credits
+  → Usage limits (per code & per user)
+  → Expiration dates
+  → Admin creation API
+
+Sales Funnel:
+  → 8-stage conversion funnel
+  → Optimized texts based on Random Coffee People
+  → Social proof + money-back guarantee
+
+═══════════════════════════════════════════════════════════════
+
+📊 STATISTICS:
+
+  Files Created:        21
+  Lines of Code:        ~3000+
+  Database Models:      6
+  Payment Providers:    3
+  Tariff Plans:         6
+  Promocode Types:      3
+  Telegram Commands:    3
+  Callback Handlers:    10+
+
+═══════════════════════════════════════════════════════════════
+
+🎯 INTEGRATION POINTS:
+
+bot.py (main file):
+  1. Import: from database import init_db, close_db
+  2. Import: from modules.payments.handlers import register_payment_handlers
+  3. Import: from modules.payments import subscription_required
+  4. Initialize: await init_db()
+  5. Register: register_payment_handlers(application)
+  6. Protect: @subscription_required on training functions
+  7. Cleanup: await close_db()
+
+═══════════════════════════════════════════════════════════════
+
+✅ READY FOR:
+  → Local testing with promocodes
+  → Integration into existing bot.py
+  → Copying to other Telegram bots
+  ⏳ Payment provider API implementation (requires API keys)
+  ⏳ Production deployment
+
+═══════════════════════════════════════════════════════════════
