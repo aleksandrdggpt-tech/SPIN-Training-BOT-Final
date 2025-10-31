@@ -16,3 +16,12 @@ logs/
 .cache/
 .mypy_cache/
 .pytest_cache/
+
+# Secrets
+.env.*
+# Databases
+*.db
+# PID
+bot.pid
+# Local data
+users_data.json
