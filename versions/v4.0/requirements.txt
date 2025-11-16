@@ -1,0 +1,27 @@
+# SPIN Training Bot v4.0 Requirements
+# Python 3.11+
+
+# Telegram Bot
+python-telegram-bot==20.7
+
+# OpenAI & Anthropic (LLM)
+openai>=1.40.0
+anthropic>=0.25.0
+
+# Environment
+python-dotenv==1.0.0
+
+# HTTP Client
+httpx[http2]>=0.25.2
+
+# Database (SQLAlchemy + async)
+sqlalchemy==2.0.23
+aiosqlite==0.19.0
+alembic==1.13.0
+
+# Payment Providers (optional, install when needed)
+# yookassa>=3.0.0
+# cloudpayments>=0.1.0
+
+# Utilities
+python-dateutil==2.8.2

@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*$py.class
+
+venv/
+.env
+
+logs/
+*.log
+
+.DS_Store
+.idea/
+.vscode/
+.cache/
+.mypy_cache/
+.pytest_cache/
+
+# Secrets
+.env.*
+# Databases
+*.db
+# PID
+bot.pid
+# Local data
+users_data.json
+
+# Keep examples
+!.env.example
+!env.v4.example
+
