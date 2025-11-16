@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Устанавливаем Python зависимости
-RUN pip install --no-cache-dir -r REQUIREMENTS.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем код приложения
 COPY . .
