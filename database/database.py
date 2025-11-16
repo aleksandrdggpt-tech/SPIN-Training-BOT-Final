@@ -70,9 +70,11 @@ connect_args = {}
 if is_postgres:
     # Railway PostgreSQL requires SSL
     # asyncpg uses 'ssl' parameter (True or SSL object), not 'sslmode' in URL
-    # IMPORTANT: Make sure sslmode is NOT in connect_args (it will cause errors)
+    # CRITICAL: asyncpg does NOT support sslmode parameter - it causes TypeError
+    # We must use 'ssl' parameter instead
     connect_args['ssl'] = True
-    # Explicitly ensure sslmode is not passed (in case SQLAlchemy tries to pass it from URL)
+    # Explicitly ensure sslmode is NOT in connect_args (SQLAlchemy might try to pass it from URL)
+    # This is a safety check - we already removed it from URL, but just in case
     if 'sslmode' in connect_args:
         del connect_args['sslmode']
 
