@@ -9,6 +9,7 @@ Supports:
 
 import logging
 import os
+import re
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import (
@@ -45,13 +46,19 @@ elif DATABASE_URL.startswith('postgresql://') and '+asyncpg' not in DATABASE_URL
 
 # Remove sslmode from URL if present (asyncpg doesn't support it in URL)
 # We'll pass SSL settings via connect_args instead
+# CRITICAL: asyncpg does NOT support sslmode parameter - it causes TypeError
 if DATABASE_URL.startswith('postgresql+asyncpg://'):
-    # Remove sslmode parameter from URL if present
-    if 'sslmode=' in DATABASE_URL:
-        import re
-        DATABASE_URL = re.sub(r'[?&]sslmode=[^&]*', '', DATABASE_URL)
-        # Clean up trailing ? or & if left
-        DATABASE_URL = DATABASE_URL.rstrip('?&')
+    # Remove sslmode using multiple methods to be absolutely sure
+    original_url = DATABASE_URL
+    # Method 1: Remove sslmode=value pattern (most common)
+    DATABASE_URL = re.sub(r'[?&]sslmode=[^&]*', '', DATABASE_URL)
+    # Method 2: Remove sslmode if it's the only parameter
+    DATABASE_URL = re.sub(r'\?sslmode=[^&]*$', '', DATABASE_URL)
+    DATABASE_URL = re.sub(r'&sslmode=[^&]*', '', DATABASE_URL)
+    # Clean up trailing ? or & if left
+    DATABASE_URL = DATABASE_URL.rstrip('?&')
+    if original_url != DATABASE_URL:
+        logger.info("Removed sslmode parameter from DATABASE_URL (asyncpg doesn't support it)")
 
 # Pool configuration for Railway (small pool, no overflow)
 DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '5'))
@@ -63,7 +70,11 @@ connect_args = {}
 if is_postgres:
     # Railway PostgreSQL requires SSL
     # asyncpg uses 'ssl' parameter (True or SSL object), not 'sslmode' in URL
+    # IMPORTANT: Make sure sslmode is NOT in connect_args (it will cause errors)
     connect_args['ssl'] = True
+    # Explicitly ensure sslmode is not passed (in case SQLAlchemy tries to pass it from URL)
+    if 'sslmode' in connect_args:
+        del connect_args['sslmode']
 
 # Create async engine with controlled pool
 engine_kwargs = {
@@ -79,9 +90,12 @@ engine_kwargs = {
 if connect_args:
     engine_kwargs['connect_args'] = connect_args
 
-engine = create_async_engine(DATABASE_URL, **engine_kwargs)
+# Log final configuration (without sensitive data)
+safe_url = DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL[:50]
+logger.info(f"Database engine created: {safe_url}... (pool_size={DB_POOL_SIZE}, max_overflow={DB_MAX_OVERFLOW})")
+logger.debug(f"Connect args: {connect_args}")
 
-logger.info(f"Database engine created: {DATABASE_URL[:50]}... (pool_size={DB_POOL_SIZE}, max_overflow={DB_MAX_OVERFLOW})")
+engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
 # Create async session factory
 async_session_maker = async_sessionmaker(
