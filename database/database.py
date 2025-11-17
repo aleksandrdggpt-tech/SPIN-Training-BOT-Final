@@ -117,6 +117,7 @@ engine_kwargs = {
 if connect_args:
     engine_kwargs['connect_args'] = connect_args
 # Add creator function directly to engine_kwargs (not in connect_args)
+# This is the correct way for async SQLAlchemy
 if creator_func:
     engine_kwargs['creator'] = creator_func
 
