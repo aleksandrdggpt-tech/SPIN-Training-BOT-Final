@@ -80,7 +80,6 @@ DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '0'))
 # Determine if we need SSL (for PostgreSQL on Railway)
 is_postgres = DATABASE_URL.startswith('postgresql+asyncpg://')
 connect_args = {}
-creator_func = None
 
 if is_postgres:
     # Railway PostgreSQL requires SSL
@@ -91,36 +90,32 @@ if is_postgres:
     
     # CRITICAL FIX: SQLAlchemy automatically passes query parameters from URL to connect_args
     # We need to intercept and filter sslmode before it reaches asyncpg
-    # For async SQLAlchemy with asyncpg, we use a custom creator function
-    # The creator receives all connect_args and must return an async connection
+    # For async SQLAlchemy, we'll use monkey-patching of asyncpg.connect
     import asyncpg
     
-    # Create creator function that filters sslmode
-    # SQLAlchemy async engine calls this with all connect_args merged from URL + connect_args
-    def create_asyncpg_connection(*args: Any, **kwargs: Any):
+    # Store original asyncpg.connect
+    original_asyncpg_connect = asyncpg.connect
+    
+    # Create wrapper that filters sslmode
+    async def filtered_asyncpg_connect(*args: Any, **kwargs: Any) -> Any:
         """
-        Creator function for asyncpg connection that filters sslmode.
+        Wrapper around asyncpg.connect that filters out sslmode parameter.
         SQLAlchemy passes query parameters from URL to connect_args, including sslmode.
         asyncpg does NOT support sslmode, so we must remove it.
-        
-        This function is called by SQLAlchemy's async engine and should return
-        a coroutine that creates the connection.
         """
         # Remove sslmode if present (asyncpg doesn't support it)
-        filtered_kwargs = dict(kwargs)
-        if 'sslmode' in filtered_kwargs:
+        if 'sslmode' in kwargs:
             logger.warning("Removing sslmode from connect args (asyncpg doesn't support it)")
-            del filtered_kwargs['sslmode']
+            del kwargs['sslmode']
         # Ensure ssl is set for Railway PostgreSQL
-        if 'ssl' not in filtered_kwargs:
-            filtered_kwargs['ssl'] = True
-        
-        # Return the asyncpg.connect coroutine directly
-        # SQLAlchemy will await it
-        return asyncpg.connect(*args, **filtered_kwargs)
+        if 'ssl' not in kwargs:
+            kwargs['ssl'] = True
+        # Call original asyncpg.connect with filtered kwargs
+        return await original_asyncpg_connect(*args, **kwargs)
     
-    # Store creator function to pass directly to create_async_engine
-    creator_func = create_asyncpg_connection
+    # Monkey-patch asyncpg.connect to use our filtered version
+    asyncpg.connect = filtered_asyncpg_connect
+    logger.info("Monkey-patched asyncpg.connect to filter sslmode parameter")
 
 # Create async engine with controlled pool
 engine_kwargs = {
@@ -135,18 +130,14 @@ engine_kwargs = {
 # Add connect_args only if we have SSL settings for PostgreSQL
 if connect_args:
     engine_kwargs['connect_args'] = connect_args
-# Add creator function directly to engine_kwargs (not in connect_args)
-# This is the correct way for async SQLAlchemy
-if creator_func:
-    engine_kwargs['creator'] = creator_func
 
 # Log final configuration (without sensitive data)
 safe_url = DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL[:50]
 logger.info(f"Database engine created: {safe_url}... (pool_size={DB_POOL_SIZE}, max_overflow={DB_MAX_OVERFLOW})")
 if connect_args:
     logger.debug(f"Connect args keys: {list(connect_args.keys())}")
-if creator_func:
-    logger.info("Using custom creator function to filter sslmode from connect args")
+if is_postgres:
+    logger.info("Using monkey-patched asyncpg.connect to filter sslmode from connect args")
 
 engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
