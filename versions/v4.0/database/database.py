@@ -103,7 +103,7 @@ if is_postgres:
     # Store original asyncpg.connect before patching
     _original_asyncpg_connect = asyncpg.connect
     
-    # Create wrapper that filters sslmode
+    # Create wrapper that filters sslmode and ensures SSL context is used
     async def _filtered_asyncpg_connect(*args: Any, **kwargs: Any) -> Any:
         """
         Wrapper around asyncpg.connect that filters out sslmode parameter.
@@ -114,9 +114,10 @@ if is_postgres:
         if 'sslmode' in kwargs:
             logger.warning("Removing sslmode from connect args (asyncpg doesn't support it)")
             del kwargs['sslmode']
-        # Ensure ssl is set for Railway PostgreSQL
+        # Ensure ssl is set for Railway PostgreSQL (use SSL context from connect_args if available)
         if 'ssl' not in kwargs:
-            kwargs['ssl'] = True
+            # Use the SSL context we created earlier (from connect_args)
+            kwargs['ssl'] = ssl_context
         # Call original asyncpg.connect with filtered kwargs
         return await _original_asyncpg_connect(*args, **kwargs)
     
