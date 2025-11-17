@@ -90,14 +90,14 @@ if is_postgres:
     
     # CRITICAL FIX: SQLAlchemy automatically passes query parameters from URL to connect_args
     # We need to intercept and filter sslmode before it reaches asyncpg
-    # For async SQLAlchemy, we'll use monkey-patching of asyncpg.connect
+    # Use monkey-patching of asyncpg.connect - this is the most reliable approach
     import asyncpg
     
-    # Store original asyncpg.connect
-    original_asyncpg_connect = asyncpg.connect
+    # Store original asyncpg.connect before patching
+    _original_asyncpg_connect = asyncpg.connect
     
     # Create wrapper that filters sslmode
-    async def filtered_asyncpg_connect(*args: Any, **kwargs: Any) -> Any:
+    async def _filtered_asyncpg_connect(*args: Any, **kwargs: Any) -> Any:
         """
         Wrapper around asyncpg.connect that filters out sslmode parameter.
         SQLAlchemy passes query parameters from URL to connect_args, including sslmode.
@@ -111,10 +111,10 @@ if is_postgres:
         if 'ssl' not in kwargs:
             kwargs['ssl'] = True
         # Call original asyncpg.connect with filtered kwargs
-        return await original_asyncpg_connect(*args, **kwargs)
+        return await _original_asyncpg_connect(*args, **kwargs)
     
     # Monkey-patch asyncpg.connect to use our filtered version
-    asyncpg.connect = filtered_asyncpg_connect
+    asyncpg.connect = _filtered_asyncpg_connect
     logger.info("Monkey-patched asyncpg.connect to filter sslmode parameter")
 
 # Create async engine with controlled pool
