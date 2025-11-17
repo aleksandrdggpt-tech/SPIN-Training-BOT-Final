@@ -9,7 +9,8 @@ Supports:
 
 import logging
 import os
-from typing import AsyncGenerator
+import re
+from typing import AsyncGenerator, Any, Dict
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -37,34 +38,111 @@ if not DATABASE_URL:
     logger.critical("DATABASE_URL is not set and DEV_MODE is disabled. Cannot start bot.")
     raise ValueError("DATABASE_URL environment variable is required. Set DEV_MODE=1 for local SQLite development.")
 
+# Log original DATABASE_URL (without sensitive data for security)
+original_database_url = DATABASE_URL
+safe_original_url = original_database_url.split('@')[-1] if '@' in original_database_url else original_database_url[:50]
+logger.info(f"Original DATABASE_URL: {safe_original_url}...")
+
 # Convert postgres:// to postgresql+asyncpg:// (Railway/Heroku compatibility)
 if DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql+asyncpg://', 1)
+    logger.info("Converted postgres:// to postgresql+asyncpg://")
 elif DATABASE_URL.startswith('postgresql://') and '+asyncpg' not in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://', 1)
+    logger.info("Converted postgresql:// to postgresql+asyncpg://")
 
-# Add sslmode=require for PostgreSQL connections (Railway requirement)
-if DATABASE_URL.startswith('postgresql+asyncpg://') and 'sslmode' not in DATABASE_URL:
-    sep = '&' if '?' in DATABASE_URL else '?'
-    DATABASE_URL = DATABASE_URL + f"{sep}sslmode=require"
+# Remove sslmode from URL if present (asyncpg doesn't support it in URL)
+# We'll pass SSL settings via connect_args instead
+# CRITICAL: asyncpg does NOT support sslmode parameter - it causes TypeError
+if DATABASE_URL.startswith('postgresql+asyncpg://'):
+    # Check if sslmode is present before removal
+    had_sslmode = 'sslmode=' in DATABASE_URL
+    original_url = DATABASE_URL
+    
+    # Remove sslmode using multiple methods to be absolutely sure
+    # Method 1: Remove sslmode=value pattern (most common)
+    DATABASE_URL = re.sub(r'[?&]sslmode=[^&]*', '', DATABASE_URL)
+    # Method 2: Remove sslmode if it's the only parameter
+    DATABASE_URL = re.sub(r'\?sslmode=[^&]*$', '', DATABASE_URL)
+    DATABASE_URL = re.sub(r'&sslmode=[^&]*', '', DATABASE_URL)
+    # Clean up trailing ? or & if left
+    DATABASE_URL = DATABASE_URL.rstrip('?&')
+    
+    if had_sslmode:
+        safe_cleaned_url = DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL[:50]
+        logger.info(f"Removed sslmode parameter from DATABASE_URL (asyncpg doesn't support it)")
+        logger.info(f"Cleaned DATABASE_URL: {safe_cleaned_url}...")
 
 # Pool configuration for Railway (small pool, no overflow)
 DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '5'))
 DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '0'))
 
-# Create async engine with controlled pool
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    future=True,
-    poolclass=QueuePool,
-    pool_size=DB_POOL_SIZE,
-    max_overflow=DB_MAX_OVERFLOW,
-    pool_pre_ping=True,
-    pool_recycle=3600,  # Recycle connections every hour
-)
+# Determine if we need SSL (for PostgreSQL on Railway)
+is_postgres = DATABASE_URL.startswith('postgresql+asyncpg://')
+connect_args = {}
+creator_func = None
 
-logger.info(f"Database engine created: {DATABASE_URL[:50]}... (pool_size={DB_POOL_SIZE}, max_overflow={DB_MAX_OVERFLOW})")
+if is_postgres:
+    # Railway PostgreSQL requires SSL
+    # asyncpg uses 'ssl' parameter (True or SSL object), not 'sslmode' in URL
+    # CRITICAL: asyncpg does NOT support sslmode parameter - it causes TypeError
+    # We must use 'ssl' parameter instead
+    connect_args['ssl'] = True
+    
+    # CRITICAL FIX: SQLAlchemy automatically passes query parameters from URL to connect_args
+    # We need to intercept and filter sslmode before it reaches asyncpg
+    # For async SQLAlchemy, we need to use a custom creator function
+    import asyncpg
+    
+    # Create an async wrapper function that filters sslmode
+    # This will be used as the creator function for the connection pool
+    async def filtered_asyncpg_connect(*args: Any, **kwargs: Any) -> Any:
+        """
+        Async wrapper around asyncpg.connect that filters out sslmode parameter.
+        SQLAlchemy passes query parameters from URL to connect_args, including sslmode.
+        asyncpg does NOT support sslmode, so we must remove it before calling asyncpg.connect.
+        """
+        # Remove sslmode if present (asyncpg doesn't support it)
+        if 'sslmode' in kwargs:
+            logger.warning("Removing sslmode from connect args (asyncpg doesn't support it)")
+            del kwargs['sslmode']
+        # Ensure ssl is set for Railway PostgreSQL
+        if 'ssl' not in kwargs:
+            kwargs['ssl'] = True
+        # Call asyncpg.connect with filtered kwargs
+        return await asyncpg.connect(*args, **kwargs)
+    
+    # Store creator function to pass directly to create_async_engine
+    # For async SQLAlchemy, creator must be an async function
+    creator_func = filtered_asyncpg_connect
+
+# Create async engine with controlled pool
+engine_kwargs = {
+    'echo': False,
+    'future': True,
+    'poolclass': QueuePool,
+    'pool_size': DB_POOL_SIZE,
+    'max_overflow': DB_MAX_OVERFLOW,
+    'pool_pre_ping': True,
+    'pool_recycle': 3600,  # Recycle connections every hour
+}
+# Add connect_args only if we have SSL settings for PostgreSQL
+if connect_args:
+    engine_kwargs['connect_args'] = connect_args
+# Add creator function directly to engine_kwargs (not in connect_args)
+# This is the correct way for async SQLAlchemy
+if creator_func:
+    engine_kwargs['creator'] = creator_func
+
+# Log final configuration (without sensitive data)
+safe_url = DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL[:50]
+logger.info(f"Database engine created: {safe_url}... (pool_size={DB_POOL_SIZE}, max_overflow={DB_MAX_OVERFLOW})")
+if connect_args:
+    logger.debug(f"Connect args keys: {list(connect_args.keys())}")
+if creator_func:
+    logger.info("Using custom creator function to filter sslmode from connect args")
+
+engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
 # Create async session factory
 async_session_maker = async_sessionmaker(
@@ -78,7 +156,7 @@ async_session_maker = async_sessionmaker(
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Get database session as async context manager.
-
+    
     Usage:
         async with get_session() as session:
             # Your database operations
