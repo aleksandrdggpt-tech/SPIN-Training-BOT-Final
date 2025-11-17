@@ -67,6 +67,7 @@ DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '0'))
 # Determine if we need SSL (for PostgreSQL on Railway)
 is_postgres = DATABASE_URL.startswith('postgresql+asyncpg://')
 connect_args = {}
+creator_func = None
 
 if is_postgres:
     # Railway PostgreSQL requires SSL
@@ -77,7 +78,7 @@ if is_postgres:
     
     # CRITICAL FIX: SQLAlchemy automatically passes query parameters from URL to connect_args
     # We need to intercept and filter sslmode before it reaches asyncpg
-    # The solution: use a custom async function that wraps asyncpg.connect
+    # For async SQLAlchemy, we need to use a custom creator function
     import asyncpg
     
     # Create an async wrapper function that filters sslmode
@@ -98,9 +99,9 @@ if is_postgres:
         # Call asyncpg.connect with filtered kwargs
         return await asyncpg.connect(*args, **kwargs)
     
-    # Use custom creator function that filters sslmode
+    # Store creator function to pass directly to create_async_engine
     # For async SQLAlchemy, creator must be an async function
-    connect_args['creator'] = filtered_asyncpg_connect
+    creator_func = filtered_asyncpg_connect
 
 # Create async engine with controlled pool
 engine_kwargs = {
@@ -115,14 +116,17 @@ engine_kwargs = {
 # Add connect_args only if we have SSL settings for PostgreSQL
 if connect_args:
     engine_kwargs['connect_args'] = connect_args
+# Add creator function directly to engine_kwargs (not in connect_args)
+if creator_func:
+    engine_kwargs['creator'] = creator_func
 
 # Log final configuration (without sensitive data)
 safe_url = DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL[:50]
 logger.info(f"Database engine created: {safe_url}... (pool_size={DB_POOL_SIZE}, max_overflow={DB_MAX_OVERFLOW})")
 if connect_args:
     logger.debug(f"Connect args keys: {list(connect_args.keys())}")
-    if 'creator' in connect_args:
-        logger.debug("Using custom creator function to filter sslmode")
+if creator_func:
+    logger.info("Using custom creator function to filter sslmode from connect args")
 
 engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
