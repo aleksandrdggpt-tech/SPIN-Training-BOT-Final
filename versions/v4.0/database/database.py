@@ -138,6 +138,13 @@ if connect_args:
     logger.debug(f"Connect args keys: {list(connect_args.keys())}")
 if is_postgres:
     logger.info("Using monkey-patched asyncpg.connect to filter sslmode from connect args")
+    # Log host and port for debugging connection issues
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(DATABASE_URL)
+        logger.info(f"Database host: {parsed.hostname}, port: {parsed.port}")
+    except Exception as e:
+        logger.warning(f"Could not parse DATABASE_URL for logging: {e}")
 
 engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
