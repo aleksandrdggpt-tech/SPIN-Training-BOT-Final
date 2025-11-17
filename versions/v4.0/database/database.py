@@ -82,11 +82,18 @@ is_postgres = DATABASE_URL.startswith('postgresql+asyncpg://')
 connect_args = {}
 
 if is_postgres:
-    # Railway PostgreSQL requires SSL
+    # Railway PostgreSQL requires SSL but uses self-signed certificates
     # asyncpg uses 'ssl' parameter (True or SSL object), not 'sslmode' in URL
     # CRITICAL: asyncpg does NOT support sslmode parameter - it causes TypeError
-    # We must use 'ssl' parameter instead
-    connect_args['ssl'] = True
+    # We must use 'ssl' parameter with SSL context that doesn't verify certificates
+    import ssl
+    
+    # Create SSL context that doesn't verify certificates (Railway uses self-signed certs)
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    
+    connect_args['ssl'] = ssl_context
     
     # CRITICAL FIX: SQLAlchemy automatically passes query parameters from URL to connect_args
     # We need to intercept and filter sslmode before it reaches asyncpg
