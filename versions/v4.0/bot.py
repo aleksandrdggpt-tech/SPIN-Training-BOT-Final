@@ -1002,17 +1002,13 @@ def main():
             """Обработчик ошибок для предотвращения падения бота."""
             error = context.error
 
-            # Conflict - критическая ошибка, нужно остановить бот
+            # Conflict - логируем, но не останавливаем бот (обрабатывается в основном коде polling)
             if isinstance(error, Conflict):
-                logger.error("=" * 80)
-                logger.error("❌ CONFLICT ERROR - Останавливаем бота!")
-                logger.error(f"Conflict: {error}")
-                logger.error("=" * 80)
-                print("\n❌ КРИТИЧЕСКАЯ ОШИБКА: Бот уже запущен в другом месте!")
-                print("Останавливаем этот экземпляр...")
-                # Останавливаем бот при конфликте
-                if app_instance:
-                    await app_instance.stop()
+                logger.warning("=" * 80)
+                logger.warning("⚠️ CONFLICT ERROR в обработчике (не критично, polling обработает)")
+                logger.warning(f"Conflict: {error}")
+                logger.warning("=" * 80)
+                # Не останавливаем бот - пусть polling обработает это
                 return
 
             logger.error("=" * 80)
@@ -1063,9 +1059,10 @@ def main():
 
         # Запуск polling (блокирующий вызов, run_polling создаст и будет управлять event loop)
         # Используем close_loop=False, так как мы управляем loop вручную
-        # Добавляем retry логику для сетевых ошибок
-        max_retries = 3
-        retry_delay = 5  # секунд
+        # Добавляем retry логику для сетевых ошибок и Conflict
+        max_retries = 10  # Увеличиваем количество попыток для Conflict
+        retry_delay = 10  # секунд - ждем дольше при Conflict
+        conflict_retry_delay = 30  # секунд - специальная задержка для Conflict
 
         try:
             for attempt in range(max_retries):
@@ -1082,12 +1079,19 @@ def main():
                     # Если дошли сюда, значит polling завершился нормально
                     break
                 except Conflict as e:
-                    # Conflict - критическая ошибка, не повторяем попытки
-                    logger.error(f"❌ Conflict при запуске polling: {e}")
-                    logger.error("Бот уже запущен в другом месте. Останавливаем...")
-                    print("\n❌ КРИТИЧЕСКАЯ ОШИБКА: Бот уже запущен в другом месте!")
-                    print("Остановите другой экземпляр бота перед запуском нового.")
-                    raise
+                    # Conflict - другой экземпляр бота работает, ждем и повторяем попытку
+                    if attempt < max_retries - 1:
+                        logger.warning(f"⚠️ Conflict при запуске polling (попытка {attempt + 1}/{max_retries}): {e}")
+                        logger.warning("Другой экземпляр бота работает. Ждем и повторяем попытку...")
+                        logger.info(f"⏳ Повторная попытка через {conflict_retry_delay} секунд...")
+                        import time
+                        time.sleep(conflict_retry_delay)
+                        # Не увеличиваем задержку экспоненциально для Conflict - используем фиксированную
+                    else:
+                        logger.error(f"❌ Не удалось запустить polling после {max_retries} попыток из-за Conflict")
+                        logger.error("Возможно, другой экземпляр бота все еще работает.")
+                        logger.error("Проверьте Railway Dashboard и остановите старый сервис.")
+                        raise
                 except NetworkError as e:
                     if attempt < max_retries - 1:
                         logger.warning(f"⚠️ Сетевая ошибка при запуске polling (попытка {attempt + 1}/{max_retries}): {e}")
@@ -1112,9 +1116,12 @@ def main():
             raise
 
     except Conflict as e:
-        logger.error(f"Конфликт с Telegram API: {e}")
-        print("❌ Ошибка: Бот уже запущен в другом месте!")
-        print("Убедитесь, что не запущено других экземпляров бота.")
+        # Conflict уже обработан в цикле retry выше, но если дошли сюда - все попытки исчерпаны
+        logger.error(f"Конфликт с Telegram API после всех попыток: {e}")
+        logger.error("Бот будет перезапущен Railway автоматически. Проверьте, не запущен ли старый сервис.")
+        print("⚠️ Внимание: Бот не смог запуститься из-за конфликта с другим экземпляром.")
+        print("Railway автоматически перезапустит бот. Если проблема сохраняется,")
+        print("проверьте Railway Dashboard и удалите старый сервис 'prolific-reflection'.")
     except NetworkError as e:
         logger.error(f"Ошибка сети: {e}")
         logger.error(f"Тип ошибки: {type(e).__name__}")
