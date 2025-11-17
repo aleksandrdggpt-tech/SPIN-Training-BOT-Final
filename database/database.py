@@ -38,18 +38,28 @@ if not DATABASE_URL:
     logger.critical("DATABASE_URL is not set and DEV_MODE is disabled. Cannot start bot.")
     raise ValueError("DATABASE_URL environment variable is required. Set DEV_MODE=1 for local SQLite development.")
 
+# Log original DATABASE_URL (without sensitive data for security)
+original_database_url = DATABASE_URL
+safe_original_url = original_database_url.split('@')[-1] if '@' in original_database_url else original_database_url[:50]
+logger.info(f"Original DATABASE_URL: {safe_original_url}...")
+
 # Convert postgres:// to postgresql+asyncpg:// (Railway/Heroku compatibility)
 if DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql+asyncpg://', 1)
+    logger.info("Converted postgres:// to postgresql+asyncpg://")
 elif DATABASE_URL.startswith('postgresql://') and '+asyncpg' not in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://', 1)
+    logger.info("Converted postgresql:// to postgresql+asyncpg://")
 
 # Remove sslmode from URL if present (asyncpg doesn't support it in URL)
 # We'll pass SSL settings via connect_args instead
 # CRITICAL: asyncpg does NOT support sslmode parameter - it causes TypeError
 if DATABASE_URL.startswith('postgresql+asyncpg://'):
-    # Remove sslmode using multiple methods to be absolutely sure
+    # Check if sslmode is present before removal
+    had_sslmode = 'sslmode=' in DATABASE_URL
     original_url = DATABASE_URL
+    
+    # Remove sslmode using multiple methods to be absolutely sure
     # Method 1: Remove sslmode=value pattern (most common)
     DATABASE_URL = re.sub(r'[?&]sslmode=[^&]*', '', DATABASE_URL)
     # Method 2: Remove sslmode if it's the only parameter
@@ -57,8 +67,11 @@ if DATABASE_URL.startswith('postgresql+asyncpg://'):
     DATABASE_URL = re.sub(r'&sslmode=[^&]*', '', DATABASE_URL)
     # Clean up trailing ? or & if left
     DATABASE_URL = DATABASE_URL.rstrip('?&')
-    if original_url != DATABASE_URL:
-        logger.info("Removed sslmode parameter from DATABASE_URL (asyncpg doesn't support it)")
+    
+    if had_sslmode:
+        safe_cleaned_url = DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL[:50]
+        logger.info(f"Removed sslmode parameter from DATABASE_URL (asyncpg doesn't support it)")
+        logger.info(f"Cleaned DATABASE_URL: {safe_cleaned_url}...")
 
 # Pool configuration for Railway (small pool, no overflow)
 DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '5'))
