@@ -91,30 +91,36 @@ if is_postgres:
     
     # CRITICAL FIX: SQLAlchemy automatically passes query parameters from URL to connect_args
     # We need to intercept and filter sslmode before it reaches asyncpg
-    # For async SQLAlchemy, we need to use a custom creator function
+    # For async SQLAlchemy with asyncpg, we use a custom creator function
+    # The creator receives all connect_args and must return an async connection
     import asyncpg
     
-    # Create an async wrapper function that filters sslmode
-    # This will be used as the creator function for the connection pool
-    async def filtered_asyncpg_connect(*args: Any, **kwargs: Any) -> Any:
+    # Create creator function that filters sslmode
+    # SQLAlchemy async engine calls this with all connect_args merged from URL + connect_args
+    def create_asyncpg_connection(*args: Any, **kwargs: Any):
         """
-        Async wrapper around asyncpg.connect that filters out sslmode parameter.
+        Creator function for asyncpg connection that filters sslmode.
         SQLAlchemy passes query parameters from URL to connect_args, including sslmode.
-        asyncpg does NOT support sslmode, so we must remove it before calling asyncpg.connect.
+        asyncpg does NOT support sslmode, so we must remove it.
+        
+        This function is called by SQLAlchemy's async engine and should return
+        a coroutine that creates the connection.
         """
         # Remove sslmode if present (asyncpg doesn't support it)
-        if 'sslmode' in kwargs:
+        filtered_kwargs = dict(kwargs)
+        if 'sslmode' in filtered_kwargs:
             logger.warning("Removing sslmode from connect args (asyncpg doesn't support it)")
-            del kwargs['sslmode']
+            del filtered_kwargs['sslmode']
         # Ensure ssl is set for Railway PostgreSQL
-        if 'ssl' not in kwargs:
-            kwargs['ssl'] = True
-        # Call asyncpg.connect with filtered kwargs
-        return await asyncpg.connect(*args, **kwargs)
+        if 'ssl' not in filtered_kwargs:
+            filtered_kwargs['ssl'] = True
+        
+        # Return the asyncpg.connect coroutine directly
+        # SQLAlchemy will await it
+        return asyncpg.connect(*args, **filtered_kwargs)
     
     # Store creator function to pass directly to create_async_engine
-    # For async SQLAlchemy, creator must be an async function
-    creator_func = filtered_asyncpg_connect
+    creator_func = create_asyncpg_connection
 
 # Create async engine with controlled pool
 engine_kwargs = {
