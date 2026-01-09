@@ -41,7 +41,8 @@ class AdminButtonStates(IntEnum):
     WAITING_BUTTON_TEXT = 1
     WAITING_LEAD_MAGNET_TYPE = 2
     WAITING_EXTERNAL_LINK = 3
-    WAITING_POST_CONTENT = 4
+    WAITING_CHANNEL = 4
+    WAITING_POST_CONTENT = 5
 
 
 # ==================== ADMIN AUTHENTICATION ====================
@@ -727,16 +728,16 @@ async def add_button_type_callback(update: Update, context: ContextTypes.DEFAULT
     
     if lead_magnet_type == "bot":
         # Для бота не нужна дополнительная ссылка
-        # Запрашиваем пост для публикации
+        # Запрашиваем канал для публикации
         await query.edit_message_text(
             "✅ Тип выбран: Доступ к боту\n\n"
-            "Теперь отправьте пост, который нужно опубликовать в канале.\n\n"
-            "Вы можете отправить:\n"
-            "• Текст поста\n"
-            "• Текст с изображением\n"
-            "• Переслать сообщение из другого чата"
+            "Отправьте username канала, в который нужно опубликовать пост.\n\n"
+            "Формат:\n"
+            "• @channel_username\n"
+            "• channel_username (без @)\n\n"
+            "Бот должен быть администратором канала."
         )
-        return AdminButtonStates.WAITING_POST_CONTENT
+        return AdminButtonStates.WAITING_CHANNEL
     
     else:
         # Для внешней ссылки нужна ссылка
@@ -773,14 +774,69 @@ async def add_button_link_handler(update: Update, context: ContextTypes.DEFAULT_
     
     await update.message.reply_text(
         "✅ Ссылка сохранена!\n\n"
-        "Теперь отправьте пост, который нужно опубликовать в канале.\n\n"
-        "Вы можете отправить:\n"
-        "• Текст поста\n"
-        "• Текст с изображением\n"
-        "• Переслать сообщение из другого чата"
+        "Отправьте username канала, в который нужно опубликовать пост.\n\n"
+        "Формат:\n"
+        "• @channel_username\n"
+        "• channel_username (без @)\n\n"
+        "Бот должен быть администратором канала."
     )
     
-    return AdminButtonStates.WAITING_POST_CONTENT
+    return AdminButtonStates.WAITING_CHANNEL
+
+
+async def add_button_channel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle channel selection."""
+    telegram_id = update.effective_user.id
+    
+    if not is_admin(telegram_id):
+        await update.message.reply_text("❌ У вас нет прав доступа.")
+        return ConversationHandler.END
+    
+    channel_input = update.message.text.strip()
+    
+    # Обрабатываем формат канала
+    if channel_input.startswith('@'):
+        channel_id = channel_input
+    else:
+        channel_id = f"@{channel_input}"
+    
+    # Проверяем, что бот может работать с каналом
+    try:
+        # Пытаемся получить информацию о канале
+        chat = await context.bot.get_chat(chat_id=channel_id)
+        
+        # Проверяем, что это канал
+        if chat.type not in ['channel', 'supergroup']:
+            await update.message.reply_text(
+                "❌ Это не канал. Отправьте username канала.\n\n"
+                "Формат: @channel_username или channel_username"
+            )
+            return AdminButtonStates.WAITING_CHANNEL
+        
+        # Сохраняем канал
+        context.user_data['button_channel_id'] = channel_id
+        
+        await update.message.reply_text(
+            f"✅ Канал выбран: {channel_id}\n\n"
+            "Теперь отправьте пост, который нужно опубликовать в канале.\n\n"
+            "Вы можете отправить:\n"
+            "• Текст поста\n"
+            "• Текст с изображением\n"
+            "• Переслать сообщение из другого чата"
+        )
+        
+        return AdminButtonStates.WAITING_POST_CONTENT
+        
+    except Exception as e:
+        logger.error(f"Error checking channel: {e}")
+        await update.message.reply_text(
+            f"❌ Ошибка при проверке канала: {e}\n\n"
+            "Убедитесь, что:\n"
+            "• Бот является администратором канала\n"
+            "• Username канала указан правильно\n"
+            "• Канал существует и доступен"
+        )
+        return AdminButtonStates.WAITING_CHANNEL
 
 
 async def add_button_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -799,9 +855,11 @@ async def add_button_post_handler(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ Ошибка: данные не найдены. Начните заново.")
         return ConversationHandler.END
     
-    # Получаем ID канала из конфига
-    from .config import CHANNEL_USERNAME
-    channel_id = CHANNEL_USERNAME if CHANNEL_USERNAME.startswith('@') else f"@{CHANNEL_USERNAME}"
+    # Получаем ID канала из сохраненных данных
+    channel_id = context.user_data.get('button_channel_id')
+    if not channel_id:
+        await update.message.reply_text("❌ Ошибка: канал не выбран. Начните заново.")
+        return ConversationHandler.END
     
     try:
         # Получаем контент поста
@@ -942,6 +1000,7 @@ async def add_button_post_handler(update: Update, context: ContextTypes.DEFAULT_
         context.user_data.pop('button_text', None)
         context.user_data.pop('lead_magnet_type', None)
         context.user_data.pop('external_link', None)
+        context.user_data.pop('button_channel_id', None)
         
     except Exception as e:
         logger.error(f"Error publishing post: {e}")
@@ -955,9 +1014,11 @@ async def add_button_post_handler(update: Update, context: ContextTypes.DEFAULT_
 async def cancel_button_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancel button addition."""
     # Очищаем сохраненные данные
-    if 'user_data' in update:
-        update.user_data.pop('button_channel_id', None)
-        update.user_data.pop('button_message_id', None)
+    context.user_data.pop('button_channel_id', None)
+    context.user_data.pop('button_message_id', None)
+    context.user_data.pop('button_text', None)
+    context.user_data.pop('lead_magnet_type', None)
+    context.user_data.pop('external_link', None)
     
     await update.message.reply_text("❌ Добавление кнопки отменено.")
     return ConversationHandler.END
@@ -1076,6 +1137,9 @@ def register_admin_handlers(application):
             ],
             AdminButtonStates.WAITING_EXTERNAL_LINK: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_link_handler)
+            ],
+            AdminButtonStates.WAITING_CHANNEL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_channel_handler)
             ],
             AdminButtonStates.WAITING_POST_CONTENT: [
                 MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.DOCUMENT | filters.AUDIO | filters.VOICE, add_button_post_handler)
