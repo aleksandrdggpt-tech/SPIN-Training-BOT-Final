@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse, parse_qs
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import TelegramError
+from telegram.error import TelegramError, BadRequest, Forbidden
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,9 @@ class ChannelButtonService:
         """
         Добавляет кнопку к существующему посту в канале.
         
+        Если пост создан другим пользователем/ботом и его нельзя отредактировать,
+        отправляет новое сообщение с кнопкой под постом.
+        
         Args:
             bot: Экземпляр Telegram бота
             channel_id: ID канала (username или числовой ID)
@@ -144,16 +147,53 @@ class ChannelButtonService:
             # Создаем клавиатуру с кнопкой
             keyboard = ChannelButtonService.create_button_keyboard(link, button_text)
             
-            # Редактируем пост, добавляя кнопку
-            await bot.edit_message_reply_markup(
-                chat_id=channel_id,
-                message_id=message_id,
-                reply_markup=keyboard
-            )
-            
-            logger.info(f"Button added to post {message_id} in channel {channel_id}, type: {lead_magnet_type}")
-            return True
-            
+            # Пытаемся отредактировать пост, добавляя кнопку
+            try:
+                await bot.edit_message_reply_markup(
+                    chat_id=channel_id,
+                    message_id=message_id,
+                    reply_markup=keyboard
+                )
+                logger.info(f"Button added to post {message_id} in channel {channel_id}, type: {lead_magnet_type}")
+                return True
+                
+            except (BadRequest, Forbidden) as e:
+                # Пост создан другим пользователем/ботом - нельзя редактировать
+                # Отправляем новое сообщение с кнопкой под постом
+                error_message = str(e).lower()
+                if "message can't be edited" in error_message or "message is not modified" in error_message or "not enough rights" in error_message or "can't edit" in error_message:
+                    logger.warning(f"Cannot edit post {message_id} (created by another user). Sending new message with button.")
+                    
+                    try:
+                        # Отправляем новое сообщение с кнопкой, привязанное к исходному посту
+                        sent_message = await bot.send_message(
+                            chat_id=channel_id,
+                            text=f"🔘 {button_text}",
+                            reply_markup=keyboard,
+                            reply_to_message_id=message_id
+                        )
+                        
+                        logger.info(f"New message with button sent under post {message_id} in channel {channel_id}, new message_id: {sent_message.message_id}")
+                        return True
+                        
+                    except Exception as send_error:
+                        logger.error(f"Error sending new message with button: {send_error}")
+                        # Если не получилось отправить с reply_to, пробуем без него
+                        try:
+                            sent_message = await bot.send_message(
+                                chat_id=channel_id,
+                                text=f"🔘 {button_text}",
+                                reply_markup=keyboard
+                            )
+                            logger.info(f"New message with button sent in channel {channel_id}, new message_id: {sent_message.message_id}")
+                            return True
+                        except Exception as send_error2:
+                            logger.error(f"Error sending message without reply: {send_error2}")
+                            return False
+                else:
+                    # Другая ошибка - пробрасываем дальше
+                    raise
+                    
         except TelegramError as e:
             logger.error(f"Telegram error adding button: {e}")
             return False

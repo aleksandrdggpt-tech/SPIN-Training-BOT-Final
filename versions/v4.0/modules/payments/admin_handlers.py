@@ -790,17 +790,19 @@ async def add_button_type_callback(update: Update, context: ContextTypes.DEFAULT
                     f"📊 ID поста: <code>{message_id}</code>\n"
                     f"🔘 Текст: {escaped_button_text}\n"
                     f"🤖 Тип: Доступ к боту\n"
-                    f"🔗 Ссылка: <code>{escaped_bot_link}</code>",
+                    f"🔗 Ссылка: <code>{escaped_bot_link}</code>\n\n"
+                    f"<i>Примечание: Если пост был создан другим пользователем, кнопка отправлена новым сообщением под постом.</i>",
                     parse_mode=ParseMode.HTML
                 )
                 logger.info(f"Button '{button_text}' (bot) added to post {message_id} by admin {telegram_id}")
             else:
                 await query.edit_message_text(
-                    f"❌ Ошибка при добавлении кнопки.\n\n"
+                    f"❌ <b>Ошибка при добавлении кнопки.</b>\n\n"
                     "Возможные причины:\n"
                     "• Бот не является администратором канала\n"
-                    "• У бота нет прав на редактирование постов\n"
-                    "• Пост был создан другим ботом/пользователем"
+                    "• У бота нет прав на отправку сообщений\n"
+                    "• Недостаточно прав для работы с каналом",
+                    parse_mode=ParseMode.HTML
                 )
             
             # Очищаем данные
@@ -903,17 +905,19 @@ async def add_button_link_handler(update: Update, context: ContextTypes.DEFAULT_
                 f"📊 ID поста: <code>{message_id}</code>\n"
                 f"🔘 Текст: {escaped_button_text}\n"
                 f"🔗 Тип: Внешняя ссылка\n"
-                f"🔗 Ссылка: <code>{escaped_external_link}</code>",
+                f"🔗 Ссылка: <code>{escaped_external_link}</code>\n\n"
+                f"<i>Примечание: Если пост был создан другим пользователем, кнопка отправлена новым сообщением под постом.</i>",
                 parse_mode=ParseMode.HTML
             )
             logger.info(f"Button '{button_text}' (external) added to post {message_id} by admin {telegram_id}")
         else:
             await update.message.reply_text(
-                f"❌ Ошибка при добавлении кнопки.\n\n"
+                f"❌ <b>Ошибка при добавлении кнопки.</b>\n\n"
                 "Возможные причины:\n"
                 "• Бот не является администратором канала\n"
-                "• У бота нет прав на редактирование постов\n"
-                "• Пост был создан другим ботом/пользователем"
+                "• У бота нет прав на отправку сообщений\n"
+                "• Недостаточно прав для работы с каналом",
+                parse_mode=ParseMode.HTML
             )
         
         # Очищаем данные
