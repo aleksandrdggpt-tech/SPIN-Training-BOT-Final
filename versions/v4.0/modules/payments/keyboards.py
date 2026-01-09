@@ -229,6 +229,7 @@ def get_admin_promo_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📋 Список промокодов", callback_data="admin:list_promos")],
         [InlineKeyboardButton("🎁 Выдать доступ", callback_data="admin:give_access")],
         [InlineKeyboardButton("📊 Статистика", callback_data="admin:stats")],
+        [InlineKeyboardButton("📝 Список команд", callback_data="admin:commands")],
     ]
     return InlineKeyboardMarkup(keyboard)
 

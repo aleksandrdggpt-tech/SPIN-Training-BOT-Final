@@ -39,10 +39,9 @@ class AdminPromoStates(IntEnum):
 class AdminButtonStates(IntEnum):
     """States for button addition dialog."""
     WAITING_POST_URL = 1
-    WAITING_POST_TITLE = 2
-    WAITING_BUTTON_TEXT = 3
-    WAITING_LEAD_MAGNET_TYPE = 4
-    WAITING_EXTERNAL_LINK = 5
+    WAITING_BUTTON_TEXT = 2
+    WAITING_LEAD_MAGNET_TYPE = 3
+    WAITING_EXTERNAL_LINK = 4
 
 
 # ==================== ADMIN AUTHENTICATION ====================
@@ -60,7 +59,7 @@ def is_admin(user_id: int) -> bool:
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /admin command - show admin panel."""
     telegram_id = update.effective_user.id
-
+    
     # Check if user is admin
     if not is_admin(telegram_id):
         await update.message.reply_text(
@@ -68,14 +67,19 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-
-    # Show admin panel
+    
+    # Show admin panel with all commands
     message = """
 🔧 **АДМИН-ПАНЕЛЬ**
 
-Выберите действие:
-"""
+**Доступные команды:**
+`/admin` - Админ-панель
+`/add_button` - Установить кнопку в канал
 
+**Действия через меню:**
+Выберите действие ниже:
+"""
+    
     await update.message.reply_text(
         message,
         reply_markup=get_admin_promo_keyboard(),
@@ -558,6 +562,41 @@ async def admin_give_access_callback(update: Update, context: ContextTypes.DEFAU
     )
 
 
+async def admin_commands_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show list of admin commands."""
+    query = update.callback_query
+    await query.answer()
+
+    telegram_id = query.from_user.id
+
+    if not is_admin(telegram_id):
+        await query.edit_message_text("❌ Нет прав доступа.")
+        return
+
+    message = """
+📝 **СПИСОК АДМИН-КОМАНД**
+
+**Основные команды:**
+`/admin` - Админ-панель
+`/add_button` - Установить кнопку в канал
+
+**Действия через меню:**
+• ➕ Создать промокод
+• 📋 Список промокодов
+• 🎁 Выдать доступ
+• 📊 Статистика
+• 📊 Статистика по кнопкам
+"""
+
+    await query.edit_message_text(
+        message,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin:back")]
+        ])
+    )
+
+
 async def admin_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Go back to admin panel."""
     query = update.callback_query
@@ -630,37 +669,13 @@ async def add_button_url_handler(update: Update, context: ContextTypes.DEFAULT_T
     
     await update.message.reply_text(
         "✅ Ссылка на пост получена!\n\n"
-        "Теперь отправьте название поста.\n\n"
-        "Например: \"Новый курс по продажам\" или \"Бесплатный чек-лист\""
-    )
-    
-    return AdminButtonStates.WAITING_POST_TITLE
-
-
-async def add_button_post_title_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle post title input."""
-    telegram_id = update.effective_user.id
-    
-    if not is_admin(telegram_id):
-        await update.message.reply_text("❌ У вас нет прав доступа.")
-        return ConversationHandler.END
-    
-    post_title = update.message.text.strip()
-    
-    if not post_title:
-        await update.message.reply_text("❌ Название поста не может быть пустым.")
-        return AdminButtonStates.WAITING_POST_TITLE
-    
-    # Сохраняем название поста
-    context.user_data['post_title'] = post_title
-    
-    await update.message.reply_text(
-        "✅ Название поста сохранено!\n\n"
         "Теперь отправьте текст для кнопки.\n\n"
         "Например: \"Получить лид-магнит\" или \"Попробовать бота\""
     )
     
     return AdminButtonStates.WAITING_BUTTON_TEXT
+
+
 
 
 async def add_button_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -746,7 +761,9 @@ async def add_button_type_callback(update: Update, context: ContextTypes.DEFAULT
                 # Сохраняем информацию о кнопке в БД
                 try:
                     from database import ChannelButton, get_session
-                    post_title = context.user_data.get('post_title', f"Пост {message_id}")
+                    # Используем дефолтное название поста (можно будет улучшить позже)
+                    post_title = f"Пост {message_id}"
+                    
                     async with get_session() as session:
                         button = ChannelButton(
                             channel_id=str(channel_id),
@@ -853,7 +870,8 @@ async def add_button_link_handler(update: Update, context: ContextTypes.DEFAULT_
             # Сохраняем информацию о кнопке в БД
             try:
                 from database import ChannelButton, get_session
-                post_title = context.user_data.get('post_title', f"Пост {message_id}")
+                # Используем дефолтное название поста
+                post_title = f"Пост {message_id}"
                 async with get_session() as session:
                     button = ChannelButton(
                         channel_id=str(channel_id),
@@ -891,7 +909,6 @@ async def add_button_link_handler(update: Update, context: ContextTypes.DEFAULT_
         # Очищаем данные
         context.user_data.pop('button_channel_id', None)
         context.user_data.pop('button_message_id', None)
-        context.user_data.pop('post_title', None)
         context.user_data.pop('button_text', None)
         context.user_data.pop('lead_magnet_type', None)
         
@@ -1023,9 +1040,6 @@ def register_admin_handlers(application):
             AdminButtonStates.WAITING_POST_URL: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_url_handler)
             ],
-            AdminButtonStates.WAITING_POST_TITLE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_post_title_handler)
-            ],
             AdminButtonStates.WAITING_BUTTON_TEXT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_text_handler)
             ],
@@ -1062,6 +1076,14 @@ def register_admin_handlers(application):
     application.add_handler(CallbackQueryHandler(
         admin_button_stats_callback,
         pattern="^admin:button_stats$"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        admin_commands_callback,
+        pattern="^admin:commands$"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        admin_commands_callback,
+        pattern="^admin:commands$"
     ))
 
     # ConversationHandler for promocode creation
