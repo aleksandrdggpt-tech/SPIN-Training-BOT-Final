@@ -1046,6 +1046,11 @@ def main():
         register_free_access_handlers(application)
         logger.info("✅ Free access handlers зарегистрированы")
 
+        # 5. Админ-панель и управление кнопками
+        from modules.payments.admin_handlers import register_admin_handlers
+        register_admin_handlers(application)
+        logger.info("✅ Admin handlers зарегистрированы")
+
         # Добавление обработчика текстовых сообщений ПОСЛЕ специализированных handlers
         # ВАЖНО: Регистрируем в group=0 (по умолчанию), чтобы ConversationHandler (group=-1) обрабатывался первым
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message), group=0)
