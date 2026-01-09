@@ -33,6 +33,9 @@ from .bot_models import TrainingHistory
 # Legacy models (for backward compatibility with existing code)
 from .training_models import TrainingUser
 
+# Channel button tracking
+from .models import ChannelButton, ChannelButtonClick
+
 __all__ = [
     # Connection
     'init_db',
@@ -57,6 +60,10 @@ __all__ = [
 
     # Legacy models (backward compatibility)
     'TrainingUser',
+    
+    # Channel tracking
+    'ChannelButton',
+    'ChannelButtonClick',
 
     # Enums
     'SubscriptionType',

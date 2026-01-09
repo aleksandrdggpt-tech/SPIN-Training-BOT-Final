@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any, Callable
 from functools import wraps
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from telegram.error import BadRequest
 
 from database import User, Subscription, FreeTraining, SubscriptionType, FreeTrainingSource
 from database.database import get_session
@@ -415,9 +416,26 @@ async def check_channel_subscription(bot, telegram_id: int) -> bool:
         logger.info(f"User {telegram_id} channel subscription status: {member.status}, subscribed: {is_subscribed}")
         return is_subscribed
 
+    except BadRequest as e:
+        # Обработка специфичных ошибок Telegram API
+        error_message = str(e).lower()
+        
+        if 'member list is inaccessible' in error_message:
+            # Бот не может получить доступ к списку участников канала
+            # Это может быть из-за настроек приватности канала или прав бота
+            # В этом случае считаем, что проверка невозможна, возвращаем False
+            # (пользователь должен будет использовать кнопку "Я подписался" для подтверждения)
+            logger.warning(f"Cannot check channel subscription for {telegram_id}: Member list is inaccessible. "
+                         f"Bot may not have admin rights or channel privacy settings prevent access.")
+            return False
+        
+        # Другие BadRequest ошибки (канал не найден, пользователь не найден и т.д.)
+        logger.warning(f"BadRequest when checking channel subscription for {telegram_id}: {e}")
+        return False
+        
     except Exception as e:
-        # Если произошла ошибка (например, бот не является администратором канала,
-        # или канал не существует), возвращаем False
+        # Если произошла другая ошибка (например, канал не существует),
+        # возвращаем False
         logger.error(f"Error checking channel subscription for {telegram_id}: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")

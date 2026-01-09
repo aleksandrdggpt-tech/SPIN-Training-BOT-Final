@@ -190,10 +190,63 @@ atexit.register(remove_pid_file)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start - отправляет приветствие и проверяет подписку"""
     t0 = time.perf_counter()
-    logger.info(f"🚀 Команда /start вызвана пользователем {update.effective_user.id}")
     user_id = update.effective_user.id
     telegram_id = update.effective_user.id
-
+    
+    # Обработка deep link параметров (для отслеживания нажатий на кнопку в канале)
+    start_param = None
+    if context.args and len(context.args) > 0:
+        start_param = context.args[0]
+        logger.info(f"🚀 Команда /start вызвана пользователем {telegram_id} с параметром: {start_param}")
+        
+        # Если параметр начинается с "channel_" - это нажатие на кнопку в канале
+        if start_param.startswith("channel_"):
+            try:
+                from database import get_session, ChannelButtonClick, User
+                async with get_session() as session:
+                    # Получаем или создаем пользователя
+                    from modules.payments.subscription import get_or_create_user
+                    user = await get_or_create_user(
+                        telegram_id,
+                        session,
+                        username=update.effective_user.username,
+                        first_name=update.effective_user.first_name
+                    )
+                    
+                    # Пытаемся найти button_id из параметра (формат: channel_button_123)
+                    button_id = None
+                    post_id = None
+                    if start_param.startswith("channel_button_"):
+                        try:
+                            post_id = int(start_param.replace("channel_button_", ""))
+                            # Ищем кнопку по message_id
+                            from database import ChannelButton
+                            from sqlalchemy import select
+                            button_result = await session.execute(
+                                select(ChannelButton).where(ChannelButton.message_id == post_id)
+                            )
+                            found_button = button_result.scalar_one_or_none()
+                            if found_button:
+                                button_id = found_button.id
+                        except (ValueError, Exception) as e:
+                            logger.debug(f"Could not extract button_id from param: {e}")
+                    
+                    # Сохраняем нажатие на кнопку
+                    click = ChannelButtonClick(
+                        user_id=user.id,
+                        telegram_id=telegram_id,
+                        button_id=button_id,
+                        source=start_param,
+                        post_id=post_id if 'post_id' in locals() else None
+                    )
+                    session.add(click)
+                    await session.commit()
+                    logger.info(f"✅ Зафиксировано нажатие на кнопку канала: {start_param} от пользователя {telegram_id}, button_id: {button_id}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка при сохранении нажатия на кнопку: {e}")
+    else:
+        logger.info(f"🚀 Команда /start вызвана пользователем {telegram_id}")
+    
     # Импорты для работы с БД и бесплатным доступом
     from modules.payments.messages import WELCOME_SALES
     from modules.payments.keyboards import get_start_menu_keyboard, get_start_training_keyboard
