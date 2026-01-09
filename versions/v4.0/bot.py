@@ -351,16 +351,64 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         channel_button_type = context.user_data.get('channel_button_type')
         
         if channel_button_link:
-            # Пользователь пришел через кнопку канала - сразу показываем проверку подписки
+            # Пользователь пришел через кнопку канала - проверяем подписку
+            from modules.payments.subscription import check_channel_subscription
             from modules.payments.messages import FREE_ACCESS_CHANNEL
             from modules.payments.keyboards import get_free_access_keyboard
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
             
-            await update.message.reply_text(
-                FREE_ACCESS_CHANNEL,
-                reply_markup=get_free_access_keyboard(),
-                parse_mode="Markdown"
-            )
-            logger.info(f"🔵 User came via channel button, showing subscription check. Link: {channel_button_link}, Type: {channel_button_type}")
+            # Проверяем подписку сразу
+            try:
+                is_subscribed = await check_channel_subscription(context.bot, telegram_id)
+                logger.info(f"🔵 User {telegram_id} subscription status: {is_subscribed}")
+                
+                if is_subscribed:
+                    # Пользователь подписан - сразу выдаем ссылку
+                    if channel_button_type == "external":
+                        # Внешняя ссылка - показываем кнопку со ссылкой
+                        keyboard = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔗 Получить доступ", url=channel_button_link)]
+                        ])
+                        message = f"""
+✅ **ПОДПИСКА ПОДТВЕРЖДЕНА!**
+
+Ваша ссылка готова! Нажмите на кнопку ниже, чтобы получить доступ.
+"""
+                    else:
+                        # Доступ к боту - показываем стандартное меню
+                        if access_info['has_access']:
+                            keyboard = get_start_training_keyboard()
+                            message = welcome_message + status_message + "\n\nНажмите кнопку ниже, чтобы начать тренировку:"
+                        else:
+                            keyboard = get_start_menu_keyboard()
+                            message = welcome_message + status_message
+                    
+                    await update.message.reply_text(
+                        message,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
+                    )
+                    # Очищаем данные о кнопке после выдачи ссылки
+                    context.user_data.pop('channel_button_link', None)
+                    context.user_data.pop('channel_button_type', None)
+                    context.user_data.pop('channel_button_id', None)
+                    logger.info(f"✅ Link issued immediately to subscribed user {telegram_id}: {channel_button_link}, type: {channel_button_type}")
+                else:
+                    # Пользователь не подписан - показываем диалог проверки подписки
+                    await update.message.reply_text(
+                        FREE_ACCESS_CHANNEL,
+                        reply_markup=get_free_access_keyboard(),
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"🔵 User came via channel button but not subscribed, showing subscription check. Link: {channel_button_link}, Type: {channel_button_type}")
+            except Exception as e:
+                logger.error(f"❌ Error checking subscription for channel button: {e}")
+                # В случае ошибки показываем диалог проверки подписки
+                await update.message.reply_text(
+                    FREE_ACCESS_CHANNEL,
+                    reply_markup=get_free_access_keyboard(),
+                    parse_mode="Markdown"
+                )
         else:
             # Обычный вход - показываем стандартное меню
             # Определяем клавиатуру
