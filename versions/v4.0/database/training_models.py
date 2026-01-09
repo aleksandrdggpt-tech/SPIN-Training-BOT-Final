@@ -6,7 +6,7 @@ Separate from payment models to keep concerns separated.
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Integer, String, DateTime, JSON, Text
+from sqlalchemy import Integer, BigInteger, String, DateTime, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base_models import Base
@@ -21,7 +21,7 @@ class TrainingUser(Base):
     __tablename__ = "training_users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    telegram_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
     username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     first_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     last_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

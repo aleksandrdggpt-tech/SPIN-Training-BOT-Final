@@ -12,7 +12,7 @@ This module can be copied to any bot project.
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import (
-    Integer, String, Boolean, DateTime, Enum, ForeignKey, Numeric, Text, JSON
+    Integer, BigInteger, String, Boolean, DateTime, Enum, ForeignKey, Numeric, Text, JSON
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import enum
@@ -69,7 +69,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    telegram_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
     username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     first_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     last_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

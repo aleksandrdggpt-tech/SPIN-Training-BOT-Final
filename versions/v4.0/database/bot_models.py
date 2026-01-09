@@ -10,7 +10,7 @@ This file is bot-specific and won't be shared with other bots.
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Integer, String, DateTime, JSON, ForeignKey
+from sqlalchemy import Integer, BigInteger, String, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base_models import Base
@@ -29,7 +29,7 @@ class TrainingHistory(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    telegram_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
 
     # Training session details
     training_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
