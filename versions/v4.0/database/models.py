@@ -8,13 +8,11 @@ from typing import Optional
 from sqlalchemy import (
     Integer, BigInteger, String, Boolean, DateTime, Enum, ForeignKey, Numeric, Text
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 
-
-class Base(DeclarativeBase):
-    """Base class for all models."""
-    pass
+# Use Base from base_models to ensure all models are in the same metadata
+from .base_models import Base
 
 
 class SubscriptionType(enum.Enum):

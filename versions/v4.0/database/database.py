@@ -188,9 +188,18 @@ async def init_db() -> None:
     """
     Initialize database: create all tables.
     Should be called once at application startup.
+    
+    IMPORTANT: All models must be imported before calling this function
+    to ensure they are registered in Base.metadata.
     """
     logger.info("Initializing database...")
     try:
+        # Import all models to ensure they are registered in Base.metadata
+        # This ensures all tables are created, including ChannelButton and ChannelButtonClick
+        from . import models  # noqa: F401 - Import to register models
+        from . import bot_models  # noqa: F401 - Import to register models
+        from . import training_models  # noqa: F401 - Import to register models
+        
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database initialized successfully")
