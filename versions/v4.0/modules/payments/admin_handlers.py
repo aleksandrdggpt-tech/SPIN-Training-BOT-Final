@@ -905,12 +905,15 @@ async def add_button_post_handler(update: Update, context: ContextTypes.DEFAULT_
         # Генерируем ссылку
         from services.channel_button_service import ChannelButtonService
         
+        # ВАЖНО: Для бота сначала публикуем пост с временной ссылкой, затем обновляем с правильной
         if lead_magnet_type == "bot":
             # Получаем информацию о боте
             bot_info = await context.bot.get_me()
             bot_username = bot_info.username
-            # Генерируем ссылку на бота (message_id будет известен после публикации)
-            link = ChannelButtonService.generate_bot_link(bot_username)
+            # Сначала создаем временную ссылку (без message_id)
+            # После публикации обновим с правильным message_id
+            temp_link = ChannelButtonService.generate_bot_link(bot_username)
+            link = temp_link
         else:
             # Внешняя ссылка
             link = context.user_data.get('external_link')
@@ -934,7 +937,9 @@ async def add_button_post_handler(update: Update, context: ContextTypes.DEFAULT_
             if lead_magnet_type == "bot":
                 bot_info = await context.bot.get_me()
                 bot_username = bot_info.username
+                # Генерируем правильную ссылку с message_id
                 link = ChannelButtonService.generate_bot_link(bot_username, message_id)
+                logger.info(f"🔗 Generated bot link with message_id {message_id}: {link}")
                 # Обновляем кнопку в посте с правильной ссылкой
                 keyboard = ChannelButtonService.create_button_keyboard(link, button_text)
                 try:
@@ -943,8 +948,12 @@ async def add_button_post_handler(update: Update, context: ContextTypes.DEFAULT_
                         message_id=message_id,
                         reply_markup=keyboard
                     )
-                except:
-                    pass  # Если не получилось обновить, не критично
+                    logger.info(f"✅ Button updated with correct link for message_id {message_id}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to update button with correct link: {e}")
+                    # Это критично - кнопка будет работать, но без правильного отслеживания
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
             
             # Сохраняем информацию о кнопке в БД
             try:
