@@ -780,13 +780,18 @@ async def add_button_type_callback(update: Update, context: ContextTypes.DEFAULT
                 except Exception as e:
                     logger.error(f"Error saving button info: {e}")
                 
+                # Используем HTML для безопасного отображения пользовательского текста
+                import html
+                escaped_button_text = html.escape(button_text)
+                escaped_bot_link = html.escape(bot_link)
+                
                 await query.edit_message_text(
-                    f"✅ **Кнопка добавлена!**\n\n"
-                    f"📊 ID поста: `{message_id}`\n"
-                    f"🔘 Текст: {button_text}\n"
+                    f"✅ <b>Кнопка добавлена!</b>\n\n"
+                    f"📊 ID поста: <code>{message_id}</code>\n"
+                    f"🔘 Текст: {escaped_button_text}\n"
                     f"🤖 Тип: Доступ к боту\n"
-                    f"🔗 Ссылка: {bot_link}",
-                    parse_mode=ParseMode.MARKDOWN
+                    f"🔗 Ссылка: <code>{escaped_bot_link}</code>",
+                    parse_mode=ParseMode.HTML
                 )
                 logger.info(f"Button '{button_text}' (bot) added to post {message_id} by admin {telegram_id}")
             else:
@@ -888,13 +893,18 @@ async def add_button_link_handler(update: Update, context: ContextTypes.DEFAULT_
             except Exception as e:
                 logger.error(f"Error saving button info: {e}")
             
+            # Используем HTML для безопасного отображения пользовательского текста
+            import html
+            escaped_button_text = html.escape(button_text)
+            escaped_external_link = html.escape(external_link)
+            
             await update.message.reply_text(
-                f"✅ **Кнопка добавлена!**\n\n"
-                f"📊 ID поста: `{message_id}`\n"
-                f"🔘 Текст: {button_text}\n"
+                f"✅ <b>Кнопка добавлена!</b>\n\n"
+                f"📊 ID поста: <code>{message_id}</code>\n"
+                f"🔘 Текст: {escaped_button_text}\n"
                 f"🔗 Тип: Внешняя ссылка\n"
-                f"🔗 Ссылка: {external_link}",
-                parse_mode=ParseMode.MARKDOWN
+                f"🔗 Ссылка: <code>{escaped_external_link}</code>",
+                parse_mode=ParseMode.HTML
             )
             logger.info(f"Button '{button_text}' (external) added to post {message_id} by admin {telegram_id}")
         else:
