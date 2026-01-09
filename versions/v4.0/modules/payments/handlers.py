@@ -256,11 +256,11 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
             # ШАГ 2: Если пользователь не подписан - просим подписаться
             if not is_subscribed:
                 message = """
-❌ Подписка не найдена.
+❌ **ПОДПИСКА НЕ НАЙДЕНА**
 
 Пожалуйста:
-1. Подпишитесь на канал @TaktikaKutuzova
-2. Нажмите "Я подписался" еще раз
+1. 📢 Подпишитесь на канал @TaktikaKutuzova
+2. ✅ Нажмите "Я подписался" еще раз для проверки
 """
                 try:
                     await query.edit_message_text(message, reply_markup=get_free_access_keyboard())
@@ -326,35 +326,83 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
 Вы уже получали бонус за подписку, но бесплатные тренировки закончились.
 """
 
-            # Если у пользователя есть доступ - показываем кнопку "Начать тренировку"
-            if access_info['has_access']:
-                from .keyboards import get_start_training_keyboard
+            # Проверяем, пришел ли пользователь через кнопку канала
+            channel_button_link = context.user_data.get('channel_button_link')
+            channel_button_type = context.user_data.get('channel_button_type')
+            
+            if channel_button_link:
+                # Пользователь пришел через кнопку канала - выдаем ссылку
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                
+                if channel_button_type == "external":
+                    # Внешняя ссылка - показываем кнопку со ссылкой
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔗 Получить доступ", url=channel_button_link)]
+                    ])
+                    success_message = """
+✅ **ПОДПИСКА ПОДТВЕРЖДЕНА!**
+
+Ваша ссылка готова! Нажмите на кнопку ниже, чтобы получить доступ.
+"""
+                else:
+                    # Доступ к боту - показываем кнопку "Начать тренировку" если есть доступ
+                    if access_info['has_access']:
+                        from .keyboards import get_start_training_keyboard
+                        keyboard = get_start_training_keyboard()
+                        success_message = message + "\n\nНажмите кнопку ниже, чтобы начать тренировку:"
+                    else:
+                        # Доступа нет, но подписка подтверждена
+                        from .keyboards import get_start_menu_keyboard
+                        keyboard = get_start_menu_keyboard()
+                        success_message = message + "\n\nВы можете получить бесплатный доступ:"
+                
                 try:
                     await query.edit_message_text(
-                        message + "\nНажмите кнопку ниже, чтобы начать тренировку:",
-                        reply_markup=get_start_training_keyboard()
+                        success_message,
+                        reply_markup=keyboard,
+                        parse_mode="Markdown"
                     )
+                    # Очищаем данные о кнопке после выдачи ссылки
+                    context.user_data.pop('channel_button_link', None)
+                    context.user_data.pop('channel_button_type', None)
+                    context.user_data.pop('channel_button_id', None)
+                    logger.info(f"✅ Link issued to user {telegram_id}: {channel_button_link}, type: {channel_button_type}")
                 except Exception as edit_error:
-                    # Обрабатываем ошибку "Message is not modified" - это нормально,
-                    # если пользователь нажал кнопку повторно с тем же результатом
                     if "not modified" in str(edit_error).lower():
                         logger.debug(f"Message not modified for user {telegram_id} - same content")
                     else:
                         logger.error(f"Error editing message: {edit_error}")
             else:
-                # Если доступа нет - показываем стартовое меню
-                from .keyboards import get_start_menu_keyboard
-                try:
-                    await query.edit_message_text(
-                        message + "\nВы можете получить бесплатный доступ:",
-                        reply_markup=get_start_menu_keyboard()
-                    )
-                except Exception as edit_error:
-                    # Обрабатываем ошибку "Message is not modified"
-                    if "not modified" in str(edit_error).lower():
-                        logger.debug(f"Message not modified for user {telegram_id} - same content")
-                    else:
-                        logger.error(f"Error editing message: {edit_error}")
+                # Обычная проверка подписки (не через кнопку канала)
+                # Если у пользователя есть доступ - показываем кнопку "Начать тренировку"
+                if access_info['has_access']:
+                    from .keyboards import get_start_training_keyboard
+                    try:
+                        await query.edit_message_text(
+                            message + "\nНажмите кнопку ниже, чтобы начать тренировку:",
+                            reply_markup=get_start_training_keyboard()
+                        )
+                    except Exception as edit_error:
+                        # Обрабатываем ошибку "Message is not modified" - это нормально,
+                        # если пользователь нажал кнопку повторно с тем же результатом
+                        if "not modified" in str(edit_error).lower():
+                            logger.debug(f"Message not modified for user {telegram_id} - same content")
+                        else:
+                            logger.error(f"Error editing message: {edit_error}")
+                else:
+                    # Если доступа нет - показываем стартовое меню
+                    from .keyboards import get_start_menu_keyboard
+                    try:
+                        await query.edit_message_text(
+                            message + "\nВы можете получить бесплатный доступ:",
+                            reply_markup=get_start_menu_keyboard()
+                        )
+                    except Exception as edit_error:
+                        # Обрабатываем ошибку "Message is not modified"
+                        if "not modified" in str(edit_error).lower():
+                            logger.debug(f"Message not modified for user {telegram_id} - same content")
+                        else:
+                            logger.error(f"Error editing message: {edit_error}")
     except Exception as e:
         logger.error(f"Unexpected error in check_subscription_callback: {e}")
         import traceback

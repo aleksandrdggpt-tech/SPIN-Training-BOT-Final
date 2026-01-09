@@ -216,6 +216,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # Пытаемся найти button_id из параметра (формат: channel_button_123)
                     button_id = None
                     post_id = None
+                    button_link = None
+                    button_lead_magnet_type = None
                     if start_param.startswith("channel_button_"):
                         try:
                             post_id = int(start_param.replace("channel_button_", ""))
@@ -228,6 +230,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             found_button = button_result.scalar_one_or_none()
                             if found_button:
                                 button_id = found_button.id
+                                button_link = found_button.link
+                                button_lead_magnet_type = found_button.lead_magnet_type
+                                # Сохраняем информацию о кнопке в context для последующей выдачи ссылки
+                                context.user_data['channel_button_id'] = button_id
+                                context.user_data['channel_button_link'] = button_link
+                                context.user_data['channel_button_type'] = button_lead_magnet_type
+                                logger.info(f"✅ Сохранена информация о кнопке: button_id={button_id}, link={button_link}, type={button_lead_magnet_type}")
                         except (ValueError, Exception) as e:
                             logger.debug(f"Could not extract button_id from param: {e}")
                     
@@ -337,19 +346,36 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Объединяем сообщения
         full_message = welcome_message + status_message
 
-        # Определяем клавиатуру
-        if access_info['has_access']:
-            # Если есть доступ - показываем кнопку "Начать тренировку"
-            keyboard = get_start_training_keyboard()
+        # Проверяем, пришел ли пользователь через кнопку канала
+        channel_button_link = context.user_data.get('channel_button_link')
+        channel_button_type = context.user_data.get('channel_button_type')
+        
+        if channel_button_link:
+            # Пользователь пришел через кнопку канала - сразу показываем проверку подписки
+            from modules.payments.messages import FREE_ACCESS_CHANNEL
+            from modules.payments.keyboards import get_free_access_keyboard
+            
+            await update.message.reply_text(
+                FREE_ACCESS_CHANNEL,
+                reply_markup=get_free_access_keyboard(),
+                parse_mode="Markdown"
+            )
+            logger.info(f"🔵 User came via channel button, showing subscription check. Link: {channel_button_link}, Type: {channel_button_type}")
         else:
-            # Если доступа нет - показываем меню с "Бесплатный доступ" и "Как это работает"
-            keyboard = get_start_menu_keyboard()
+            # Обычный вход - показываем стандартное меню
+            # Определяем клавиатуру
+            if access_info['has_access']:
+                # Если есть доступ - показываем кнопку "Начать тренировку"
+                keyboard = get_start_training_keyboard()
+            else:
+                # Если доступа нет - показываем меню с "Бесплатный доступ" и "Как это работает"
+                keyboard = get_start_menu_keyboard()
 
-        await update.message.reply_text(
-            full_message,
-            reply_markup=keyboard,
-            parse_mode="Markdown"
-        )
+            await update.message.reply_text(
+                full_message,
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
 
         logger.info("🔵 Message sent successfully")
         elapsed = int((time.perf_counter() - t0) * 1000)
