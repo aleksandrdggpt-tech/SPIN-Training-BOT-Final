@@ -1142,7 +1142,7 @@ def register_admin_handlers(application):
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_channel_handler)
             ],
             AdminButtonStates.WAITING_POST_CONTENT: [
-                MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.DOCUMENT | filters.AUDIO | filters.VOICE, add_button_post_handler)
+                MessageHandler(~filters.COMMAND, add_button_post_handler)
             ],
         },
         fallbacks=[
