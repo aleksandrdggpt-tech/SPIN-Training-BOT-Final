@@ -233,10 +233,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 button_link = found_button.link
                                 button_lead_magnet_type = found_button.lead_magnet_type
                                 # Сохраняем информацию о кнопке в context для последующей выдачи ссылки
+                                # ВАЖНО: Сохраняем ДО выполнения остальной логики
                                 context.user_data['channel_button_id'] = button_id
                                 context.user_data['channel_button_link'] = button_link
                                 context.user_data['channel_button_type'] = button_lead_magnet_type
-                                logger.info(f"✅ Сохранена информация о кнопке: button_id={button_id}, link={button_link}, type={button_lead_magnet_type}")
+                                logger.info(f"✅ Сохранена информация о кнопке в context.user_data: button_id={button_id}, link={button_link}, type={button_lead_magnet_type}")
+                                logger.info(f"🔍 Debug: context.user_data keys after save: {list(context.user_data.keys())}")
                         except (ValueError, Exception) as e:
                             logger.debug(f"Could not extract button_id from param: {e}")
                     
@@ -347,8 +349,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         full_message = welcome_message + status_message
 
         # Проверяем, пришел ли пользователь через кнопку канала
+        # ВАЖНО: Проверяем ДО формирования стандартного сообщения
         channel_button_link = context.user_data.get('channel_button_link')
         channel_button_type = context.user_data.get('channel_button_type')
+        logger.info(f"🔍 Debug: Checking channel button. Link: {channel_button_link}, Type: {channel_button_type}")
+        logger.info(f"🔍 Debug: context.user_data keys: {list(context.user_data.keys())}")
         
         if channel_button_link:
             # Пользователь пришел через кнопку канала - проверяем подписку
@@ -393,6 +398,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     context.user_data.pop('channel_button_type', None)
                     context.user_data.pop('channel_button_id', None)
                     logger.info(f"✅ Link issued immediately to subscribed user {telegram_id}: {channel_button_link}, type: {channel_button_type}")
+                    # ВАЖНО: Прерываем выполнение, чтобы не показывать стандартное приветствие
+                    logger.info("🔵 Message sent successfully (channel button - subscribed)")
+                    elapsed = int((time.perf_counter() - t0) * 1000)
+                    logger.info(f"⏱ /start handled in {elapsed} ms")
+                    logger.info("✅ /start завершён успешно (channel button)")
+                    return
                 else:
                     # Пользователь не подписан - показываем диалог проверки подписки
                     await update.message.reply_text(
@@ -401,14 +412,27 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="Markdown"
                     )
                     logger.info(f"🔵 User came via channel button but not subscribed, showing subscription check. Link: {channel_button_link}, Type: {channel_button_type}")
+                    # ВАЖНО: Прерываем выполнение, чтобы не показывать стандартное приветствие
+                    logger.info("🔵 Message sent successfully (channel button - not subscribed)")
+                    elapsed = int((time.perf_counter() - t0) * 1000)
+                    logger.info(f"⏱ /start handled in {elapsed} ms")
+                    logger.info("✅ /start завершён успешно (channel button - subscription check)")
+                    return
             except Exception as e:
                 logger.error(f"❌ Error checking subscription for channel button: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 # В случае ошибки показываем диалог проверки подписки
                 await update.message.reply_text(
                     FREE_ACCESS_CHANNEL,
                     reply_markup=get_free_access_keyboard(),
                     parse_mode="Markdown"
                 )
+                logger.info("🔵 Message sent successfully (channel button - error)")
+                elapsed = int((time.perf_counter() - t0) * 1000)
+                logger.info(f"⏱ /start handled in {elapsed} ms")
+                logger.info("✅ /start завершён (channel button - error)")
+                return
         else:
             # Обычный вход - показываем стандартное меню
             # Определяем клавиатуру
