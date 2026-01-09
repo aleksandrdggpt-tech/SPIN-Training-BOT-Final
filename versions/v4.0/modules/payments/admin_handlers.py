@@ -38,10 +38,10 @@ class AdminPromoStates(IntEnum):
 
 class AdminButtonStates(IntEnum):
     """States for button addition dialog."""
-    WAITING_POST_URL = 1
-    WAITING_BUTTON_TEXT = 2
-    WAITING_LEAD_MAGNET_TYPE = 3
-    WAITING_EXTERNAL_LINK = 4
+    WAITING_BUTTON_TEXT = 1
+    WAITING_LEAD_MAGNET_TYPE = 2
+    WAITING_EXTERNAL_LINK = 3
+    WAITING_POST_CONTENT = 4
 
 
 # ==================== ADMIN AUTHENTICATION ====================
@@ -619,7 +619,7 @@ async def admin_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def add_button_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle /add_button command - установить кнопку выдачи лид магнита в свой канал.
+    Handle /add_button command - создать пост с кнопкой в канале.
     """
     telegram_id = update.effective_user.id
     
@@ -628,15 +628,13 @@ async def add_button_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
     
     await update.message.reply_text(
-        "🔘 **УСТАНОВКА КНОПКИ В КАНАЛЕ**\n\n"
-        "Отправьте ссылку на пост, к которому нужно добавить кнопку.\n\n"
-        "💡 **Формат ссылки:**\n"
-        "`https://t.me/channel_username/123`\n\n"
-        "Используйте /cancel для отмены.",
-        parse_mode=ParseMode.MARKDOWN
+        "🔘 **СОЗДАНИЕ ПОСТА С КНОПКОЙ**\n\n"
+        "Отправьте текст для кнопки.\n\n"
+        "Например: \"Получить лид-магнит\" или \"Попробовать бота\"\n\n"
+        "Используйте /cancel для отмены."
     )
     
-    return AdminButtonStates.WAITING_POST_URL
+    return AdminButtonStates.WAITING_BUTTON_TEXT
 
 
 async def add_button_url_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -729,107 +727,26 @@ async def add_button_type_callback(update: Update, context: ContextTypes.DEFAULT
     
     if lead_magnet_type == "bot":
         # Для бота не нужна дополнительная ссылка
-        # Сразу добавляем кнопку
-        try:
-            channel_id = context.user_data.get('button_channel_id')
-            message_id = context.user_data.get('button_message_id')
-            button_text = context.user_data.get('button_text')
-            
-            if not all([channel_id, message_id, button_text]):
-                await query.edit_message_text("❌ Ошибка: данные не найдены. Начните заново.")
-                return ConversationHandler.END
-            
-            # Получаем информацию о боте
-            bot_info = await context.bot.get_me()
-            bot_username = bot_info.username
-            
-            # Генерируем ссылку на бота
-            from services.channel_button_service import ChannelButtonService
-            bot_link = ChannelButtonService.generate_bot_link(bot_username, message_id)
-            
-            # Добавляем кнопку
-            success = await ChannelButtonService.add_button_to_post(
-                bot=context.bot,
-                channel_id=channel_id,
-                message_id=message_id,
-                button_text=button_text,
-                link=bot_link,
-                lead_magnet_type="bot"
-            )
-            
-            if success:
-                # Сохраняем информацию о кнопке в БД
-                try:
-                    from database import ChannelButton, get_session
-                    # Используем дефолтное название поста (можно будет улучшить позже)
-                    post_title = f"Пост {message_id}"
-                    
-                    async with get_session() as session:
-                        button = ChannelButton(
-                            channel_id=str(channel_id),
-                            message_id=message_id,
-                            post_title=post_title,
-                            button_text=button_text,
-                            lead_magnet_type="bot",
-                            link=bot_link,
-                            created_by=telegram_id
-                        )
-                        session.add(button)
-                        await session.commit()
-                        logger.info(f"Button info saved: ID {button.id}")
-                except Exception as e:
-                    logger.error(f"Error saving button info: {e}")
-                
-                # Используем HTML для безопасного отображения пользовательского текста
-                import html
-                escaped_button_text = html.escape(button_text)
-                escaped_bot_link = html.escape(bot_link)
-                
-                await query.edit_message_text(
-                    f"✅ <b>Кнопка добавлена!</b>\n\n"
-                    f"📊 ID поста: <code>{message_id}</code>\n"
-                    f"🔘 Текст: {escaped_button_text}\n"
-                    f"🤖 Тип: Доступ к боту\n"
-                    f"🔗 Ссылка: <code>{escaped_bot_link}</code>\n\n"
-                    f"<i>Примечание: Если пост был создан другим пользователем, кнопка отправлена новым сообщением под постом.</i>",
-                    parse_mode=ParseMode.HTML
-                )
-                logger.info(f"Button '{button_text}' (bot) added to post {message_id} by admin {telegram_id}")
-            else:
-                await query.edit_message_text(
-                    f"❌ <b>Ошибка при добавлении кнопки.</b>\n\n"
-                    "Возможные причины:\n"
-                    "• Бот не является администратором канала\n"
-                    "• У бота нет прав на отправку сообщений\n"
-                    "• Недостаточно прав для работы с каналом",
-                    parse_mode=ParseMode.HTML
-                )
-            
-            # Очищаем данные
-            context.user_data.pop('button_channel_id', None)
-            context.user_data.pop('button_message_id', None)
-            context.user_data.pop('post_title', None)
-            context.user_data.pop('button_text', None)
-            context.user_data.pop('lead_magnet_type', None)
-            
-        except Exception as e:
-            logger.error(f"Error adding button: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.edit_message_text(f"❌ Ошибка: {e}")
-        
-        return ConversationHandler.END
+        # Запрашиваем пост для публикации
+        await query.edit_message_text(
+            "✅ Тип выбран: Доступ к боту\n\n"
+            "Теперь отправьте пост, который нужно опубликовать в канале.\n\n"
+            "Вы можете отправить:\n"
+            "• Текст поста\n"
+            "• Текст с изображением\n"
+            "• Переслать сообщение из другого чата"
+        )
+        return AdminButtonStates.WAITING_POST_CONTENT
     
     else:
         # Для внешней ссылки нужна ссылка
         await query.edit_message_text(
-            f"✅ Тип выбран: Внешняя ссылка\n\n"
-            f"Отправьте ссылку.\n\n"
-            f"Примеры:\n"
-            f"• Google Drive: `https://drive.google.com/file/d/...`\n"
-            f"• Опрос: `https://t.me/poll/...`\n"
-            f"• Любая другая ссылка",
-            parse_mode=ParseMode.MARKDOWN
+            "✅ Тип выбран: Внешняя ссылка\n\n"
+            "Отправьте ссылку.\n\n"
+            "Примеры:\n"
+            "• Google Drive: https://drive.google.com/file/d/...\n"
+            "• Опрос: https://t.me/poll/...\n"
+            "• Любая другая ссылка"
         )
         
         return AdminButtonStates.WAITING_EXTERNAL_LINK
@@ -851,34 +768,134 @@ async def add_button_link_handler(update: Update, context: ContextTypes.DEFAULT_
         )
         return AdminButtonStates.WAITING_EXTERNAL_LINK
     
+    # Сохраняем ссылку
+    context.user_data['external_link'] = external_link
+    
+    await update.message.reply_text(
+        "✅ Ссылка сохранена!\n\n"
+        "Теперь отправьте пост, который нужно опубликовать в канале.\n\n"
+        "Вы можете отправить:\n"
+        "• Текст поста\n"
+        "• Текст с изображением\n"
+        "• Переслать сообщение из другого чата"
+    )
+    
+    return AdminButtonStates.WAITING_POST_CONTENT
+
+
+async def add_button_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle post content input and publish it with button."""
+    telegram_id = update.effective_user.id
+    
+    if not is_admin(telegram_id):
+        await update.message.reply_text("❌ У вас нет прав доступа.")
+        return ConversationHandler.END
+    
+    # Получаем сохраненные данные
+    button_text = context.user_data.get('button_text')
+    lead_magnet_type = context.user_data.get('lead_magnet_type')
+    
+    if not button_text or not lead_magnet_type:
+        await update.message.reply_text("❌ Ошибка: данные не найдены. Начните заново.")
+        return ConversationHandler.END
+    
+    # Получаем ID канала из конфига
+    from .config import CHANNEL_USERNAME
+    channel_id = CHANNEL_USERNAME if CHANNEL_USERNAME.startswith('@') else f"@{CHANNEL_USERNAME}"
+    
     try:
-        channel_id = context.user_data.get('button_channel_id')
-        message_id = context.user_data.get('button_message_id')
-        button_text = context.user_data.get('button_text')
-        lead_magnet_type = context.user_data.get('lead_magnet_type')
+        # Получаем контент поста
+        post_text = None
+        photo_file_id = None
         
-        if not all([channel_id, message_id, button_text, lead_magnet_type]):
-            await update.message.reply_text("❌ Ошибка: данные не найдены. Начните заново.")
-            return ConversationHandler.END
+        # Обрабатываем пересланное сообщение
+        if update.message.forward_from_chat or update.message.forward_from:
+            # Если сообщение переслано, берем текст из него
+            if update.message.text:
+                post_text = update.message.text
+            elif update.message.caption:
+                post_text = update.message.caption
+                if update.message.photo:
+                    photo_file_id = update.message.photo[-1].file_id
+            elif update.message.photo:
+                photo_file_id = update.message.photo[-1].file_id
+                post_text = ""
+        else:
+            # Обычное сообщение
+            if update.message.text:
+                post_text = update.message.text
+            elif update.message.caption:
+                post_text = update.message.caption
+                if update.message.photo:
+                    photo_file_id = update.message.photo[-1].file_id
+            elif update.message.photo:
+                # Только фото без текста
+                photo_file_id = update.message.photo[-1].file_id
+                post_text = ""
         
-        # Добавляем кнопку
+        if not post_text and not photo_file_id:
+            await update.message.reply_text(
+                "❌ Не удалось получить контент поста.\n\n"
+                "Отправьте текст или текст с изображением."
+            )
+            return AdminButtonStates.WAITING_POST_CONTENT
+        
+        # Если текст пустой, используем дефолтный
+        if not post_text:
+            post_text = "🔘 " + button_text
+        
+        # Генерируем ссылку
         from services.channel_button_service import ChannelButtonService
         
-        success = await ChannelButtonService.add_button_to_post(
+        if lead_magnet_type == "bot":
+            # Получаем информацию о боте
+            bot_info = await context.bot.get_me()
+            bot_username = bot_info.username
+            # Генерируем ссылку на бота (message_id будет известен после публикации)
+            link = ChannelButtonService.generate_bot_link(bot_username)
+        else:
+            # Внешняя ссылка
+            link = context.user_data.get('external_link')
+            if not link:
+                await update.message.reply_text("❌ Ошибка: ссылка не найдена. Начните заново.")
+                return ConversationHandler.END
+        
+        # Публикуем пост с кнопкой
+        message_id = await ChannelButtonService.publish_post_with_button(
             bot=context.bot,
             channel_id=channel_id,
-            message_id=message_id,
+            post_content=post_text,
             button_text=button_text,
-            link=external_link,
+            link=link,
+            photo_file_id=photo_file_id,
             lead_magnet_type=lead_magnet_type
         )
         
-        if success:
+        if message_id:
+            # Обновляем ссылку для бота с реальным message_id
+            if lead_magnet_type == "bot":
+                bot_info = await context.bot.get_me()
+                bot_username = bot_info.username
+                link = ChannelButtonService.generate_bot_link(bot_username, message_id)
+                # Обновляем кнопку в посте с правильной ссылкой
+                keyboard = ChannelButtonService.create_button_keyboard(link, button_text)
+                try:
+                    await context.bot.edit_message_reply_markup(
+                        chat_id=channel_id,
+                        message_id=message_id,
+                        reply_markup=keyboard
+                    )
+                except:
+                    pass  # Если не получилось обновить, не критично
+            
             # Сохраняем информацию о кнопке в БД
             try:
                 from database import ChannelButton, get_session
-                # Используем дефолтное название поста
-                post_title = f"Пост {message_id}"
+                # Используем первые 100 символов текста как название поста
+                post_title = post_text[:100] + "..." if len(post_text) > 100 else post_text
+                if not post_title:
+                    post_title = f"Пост {message_id}"
+                
                 async with get_session() as session:
                     button = ChannelButton(
                         channel_id=str(channel_id),
@@ -886,7 +903,7 @@ async def add_button_link_handler(update: Update, context: ContextTypes.DEFAULT_
                         post_title=post_title,
                         button_text=button_text,
                         lead_magnet_type=lead_magnet_type,
-                        link=external_link,
+                        link=link,
                         created_by=telegram_id
                     )
                     session.add(button)
@@ -895,24 +912,25 @@ async def add_button_link_handler(update: Update, context: ContextTypes.DEFAULT_
             except Exception as e:
                 logger.error(f"Error saving button info: {e}")
             
-            # Используем HTML для безопасного отображения пользовательского текста
+            # Используем HTML для безопасного отображения
             import html
             escaped_button_text = html.escape(button_text)
-            escaped_external_link = html.escape(external_link)
+            escaped_link = html.escape(link)
+            escaped_post_title = html.escape(post_title[:50])
             
             await update.message.reply_text(
-                f"✅ <b>Кнопка добавлена!</b>\n\n"
+                f"✅ <b>Пост опубликован!</b>\n\n"
                 f"📊 ID поста: <code>{message_id}</code>\n"
-                f"🔘 Текст: {escaped_button_text}\n"
-                f"🔗 Тип: Внешняя ссылка\n"
-                f"🔗 Ссылка: <code>{escaped_external_link}</code>\n\n"
-                f"<i>Примечание: Если пост был создан другим пользователем, кнопка отправлена новым сообщением под постом.</i>",
+                f"📝 Название: {escaped_post_title}\n"
+                f"🔘 Текст кнопки: {escaped_button_text}\n"
+                f"{'🤖' if lead_magnet_type == 'bot' else '🔗'} Тип: {'Доступ к боту' if lead_magnet_type == 'bot' else 'Внешняя ссылка'}\n"
+                f"🔗 Ссылка: <code>{escaped_link}</code>",
                 parse_mode=ParseMode.HTML
             )
-            logger.info(f"Button '{button_text}' (external) added to post {message_id} by admin {telegram_id}")
+            logger.info(f"Post with button '{button_text}' published in channel {channel_id}, message_id: {message_id}")
         else:
             await update.message.reply_text(
-                f"❌ <b>Ошибка при добавлении кнопки.</b>\n\n"
+                f"❌ <b>Ошибка при публикации поста.</b>\n\n"
                 "Возможные причины:\n"
                 "• Бот не является администратором канала\n"
                 "• У бота нет прав на отправку сообщений\n"
@@ -921,13 +939,12 @@ async def add_button_link_handler(update: Update, context: ContextTypes.DEFAULT_
             )
         
         # Очищаем данные
-        context.user_data.pop('button_channel_id', None)
-        context.user_data.pop('button_message_id', None)
         context.user_data.pop('button_text', None)
         context.user_data.pop('lead_magnet_type', None)
+        context.user_data.pop('external_link', None)
         
     except Exception as e:
-        logger.error(f"Error adding button: {e}")
+        logger.error(f"Error publishing post: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         await update.message.reply_text(f"❌ Ошибка: {e}")
@@ -1051,9 +1068,6 @@ def register_admin_handlers(application):
             CommandHandler("add_button", add_button_command)
         ],
         states={
-            AdminButtonStates.WAITING_POST_URL: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_url_handler)
-            ],
             AdminButtonStates.WAITING_BUTTON_TEXT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_text_handler)
             ],
@@ -1062,6 +1076,9 @@ def register_admin_handlers(application):
             ],
             AdminButtonStates.WAITING_EXTERNAL_LINK: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_button_link_handler)
+            ],
+            AdminButtonStates.WAITING_POST_CONTENT: [
+                MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.DOCUMENT | filters.AUDIO | filters.VOICE, add_button_post_handler)
             ],
         },
         fallbacks=[

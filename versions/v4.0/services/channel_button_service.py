@@ -202,3 +202,71 @@ class ChannelButtonService:
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
+
+    @staticmethod
+    async def publish_post_with_button(
+        bot,
+        channel_id: str,
+        post_content: str,
+        button_text: str,
+        link: str,
+        photo: Optional[bytes] = None,
+        photo_file_id: Optional[str] = None,
+        lead_magnet_type: str = "bot"
+    ) -> Optional[int]:
+        """
+        Публикует новый пост в канале с кнопкой.
+        
+        Args:
+            bot: Экземпляр Telegram бота
+            channel_id: ID канала (username или числовой ID)
+            post_content: Текст поста
+            button_text: Текст кнопки
+            link: Ссылка для кнопки
+            photo: Байты изображения (опционально)
+            photo_file_id: File ID изображения (опционально)
+            lead_magnet_type: Тип лид-магнита ("bot" или "external")
+        
+        Returns:
+            message_id опубликованного поста или None если ошибка
+        """
+        try:
+            # Создаем клавиатуру с кнопкой
+            keyboard = ChannelButtonService.create_button_keyboard(link, button_text)
+            
+            # Публикуем пост
+            if photo_file_id:
+                # Используем file_id если есть
+                sent_message = await bot.send_photo(
+                    chat_id=channel_id,
+                    photo=photo_file_id,
+                    caption=post_content,
+                    reply_markup=keyboard
+                )
+            elif photo:
+                # Используем байты изображения
+                sent_message = await bot.send_photo(
+                    chat_id=channel_id,
+                    photo=photo,
+                    caption=post_content,
+                    reply_markup=keyboard
+                )
+            else:
+                # Только текст
+                sent_message = await bot.send_message(
+                    chat_id=channel_id,
+                    text=post_content,
+                    reply_markup=keyboard
+                )
+            
+            logger.info(f"Post published in channel {channel_id} with button, message_id: {sent_message.message_id}, type: {lead_magnet_type}")
+            return sent_message.message_id
+            
+        except TelegramError as e:
+            logger.error(f"Telegram error publishing post: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error publishing post: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return None
